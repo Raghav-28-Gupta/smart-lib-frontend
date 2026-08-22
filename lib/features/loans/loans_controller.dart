@@ -7,6 +7,8 @@ class LoansController extends AsyncNotifier<List<Loan>> {
   @override
   Future<List<Loan>> build() => ref.read(loanRepositoryProvider).activeLoans();
 
+  void prependLoan(Loan loan) => state = AsyncValue.data([loan, ...(state.value ?? [])]);
+
   Future<void> renew(String loanId) async {
     final renewed = await ref.read(loanRepositoryProvider).renew(loanId);
     final current = state.value ?? [];

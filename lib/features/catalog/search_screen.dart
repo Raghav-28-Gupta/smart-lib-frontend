@@ -26,7 +26,7 @@ class SearchScreen extends ConsumerWidget {
               decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search), hintText: 'Title or author'),
               onChanged: (v) =>
-                  ref.read(searchQueryProvider.notifier).setValue(v),
+                  ref.read(searchQueryProvider.notifier).state = v,
             ),
           ),
           SizedBox(
@@ -42,7 +42,7 @@ class SearchScreen extends ConsumerWidget {
                       label: Text(g),
                       selected: g == activeGenre,
                       onSelected: (_) =>
-                          ref.read(activeGenreProvider.notifier).setValue(g),
+                          ref.read(activeGenreProvider.notifier).state = g,
                     ),
                   ),
               ],
@@ -71,8 +71,8 @@ class SearchScreen extends ConsumerWidget {
                         'Nothing matches "$query". Try a different title, author or genre.',
                     actionLabel: 'Clear search',
                     onAction: () {
-                      ref.read(searchQueryProvider.notifier).setValue('');
-                      ref.read(activeGenreProvider.notifier).setValue('All');
+                      ref.read(searchQueryProvider.notifier).state = '';
+                      ref.read(activeGenreProvider.notifier).state = 'All';
                     },
                   );
                 }
