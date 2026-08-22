@@ -56,3 +56,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Claude Code worktrees and scratch (created by the EnterWorktree tool /
+# subagent-driven-development skill during this session)
+.claude/
