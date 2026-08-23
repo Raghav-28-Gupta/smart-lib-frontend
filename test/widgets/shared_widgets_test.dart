@@ -31,14 +31,16 @@ void main() {
   });
 
   testWidgets('BookCover shows the initial letter on the palette color', (tester) async {
-    final book = Book(
+    const book = Book(
       id: 'b1', title: 'Clean Code', author: 'Robert C. Martin', genre: 'Software Eng.',
       description: 'd', totalCopies: 4, availableCopies: 2, waitlistCount: 0,
       coverPalette: CoverPalette.accent2,
     );
-    await tester.pumpWidget(MaterialApp(theme: buildSmartLibTheme(), home: Scaffold(
-      body: BookCover(book: book, width: 100, height: 140),
-    )));
+    await tester.pumpWidget(MaterialApp(
+        theme: buildSmartLibTheme(),
+        home: const Scaffold(
+          body: BookCover(book: book, width: 100, height: 140),
+        )));
     expect(find.text('C'), findsOneWidget);
   });
 

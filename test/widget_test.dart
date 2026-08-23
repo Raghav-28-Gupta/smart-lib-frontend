@@ -1,7 +1,8 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/api_client.dart';
-import 'package:smartlib_frontend/main.dart';
+import 'package:smartlib_frontend/features/health/health_check_screen.dart';
 
 void main() {
   testWidgets('health screen renders both backend statuses', (tester) async {
@@ -13,7 +14,7 @@ void main() {
           healthCheckProvider.overrideWith((ref) => 'ok'),
           aiHealthCheckProvider.overrideWith((ref) => 'ok'),
         ],
-        child: const SmartLibApp(),
+        child: const MaterialApp(home: HealthCheckScreen()),
       ),
     );
     await tester.pumpAndSettle();
@@ -29,7 +30,7 @@ void main() {
           healthCheckProvider.overrideWith((ref) => Future<String>.error('down')),
           aiHealthCheckProvider.overrideWith((ref) => 'ok'),
         ],
-        child: const SmartLibApp(),
+        child: const MaterialApp(home: HealthCheckScreen()),
       ),
     );
     await tester.pumpAndSettle();

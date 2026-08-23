@@ -11,7 +11,8 @@ class BookCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = Theme.of(context).extension<SmartLibTokens>()!;
+    final tokens =
+        Theme.of(context).extension<SmartLibTokens>() ?? SmartLibTokens.standard();
     final colors = coverColors(book.coverPalette, tokens);
     return Container(
       width: width, height: height,

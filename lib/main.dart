@@ -1,21 +1,22 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import 'features/health/health_check_screen.dart';
+import 'core/router/app_router.dart';
+import 'core/theme/smartlib_theme.dart';
 
 void main() {
   runApp(const ProviderScope(child: SmartLibApp()));
 }
 
-class SmartLibApp extends StatelessWidget {
+class SmartLibApp extends ConsumerWidget {
   const SmartLibApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp.router(
       title: 'SmartLib',
-      theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      home: const HealthCheckScreen(),
+      theme: buildSmartLibTheme(),
+      routerConfig: ref.watch(routerProvider),
     );
   }
 }

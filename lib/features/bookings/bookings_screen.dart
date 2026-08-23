@@ -1,6 +1,7 @@
 // lib/features/bookings/bookings_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/ui/ui_controller.dart';
 import '../../models/resource_booking.dart';
 import '../../widgets/empty_state.dart';
@@ -43,7 +44,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     final bookings = ref.watch(bookingsControllerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('My Bookings'), actions: [
-        TextButton(onPressed: () {}, child: const Text('New')), // wired to go_router in Task 13
+        TextButton(onPressed: () => context.push('/booking/new'), child: const Text('New')),
       ]),
       body: bookings.when(
         loading: () => ListView(padding: const EdgeInsets.all(20), children: const [
@@ -55,7 +56,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             return EmptyState(
               icon: Icons.event_busy, title: 'No upcoming bookings',
               body: 'Reserve a seat or room to get started.',
-              actionLabel: 'Book a resource', onAction: () {},
+              actionLabel: 'Book a resource', onAction: () => context.push('/booking/new'),
             );
           }
           return ListView.builder(

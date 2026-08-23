@@ -1,6 +1,7 @@
 // lib/features/loans/loans_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/ui/ui_controller.dart';
 import '../../models/loan.dart';
 import '../../widgets/book_cover.dart';
@@ -43,7 +44,8 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
             return EmptyState(
               icon: Icons.menu_book, title: 'No active loans',
               body: 'Search the catalog to borrow your first book.',
-              actionLabel: 'Browse the catalog', onAction: () {},
+              actionLabel: 'Browse the catalog',
+              onAction: () => context.go('/search'),
             );
           }
           return ListView.builder(

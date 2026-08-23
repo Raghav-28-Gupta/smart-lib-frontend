@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../widgets/book_cover.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
@@ -104,7 +105,7 @@ class SearchScreen extends ConsumerWidget {
                                 Text('${b.author}\n$availLabel', maxLines: 2),
                             isThreeLine: true,
                             trailing: const Icon(Icons.chevron_right),
-                            onTap: () {},
+                            onTap: () => context.push('/book/${b.id}'),
                           );
                         },
                       ),

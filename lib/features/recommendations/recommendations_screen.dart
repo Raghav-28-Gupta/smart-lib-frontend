@@ -1,6 +1,7 @@
 // lib/features/recommendations/recommendations_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../widgets/book_cover.dart';
 import '../../widgets/error_state.dart';
 import 'recommendation_repository.dart';
@@ -36,20 +37,23 @@ class RecommendationsScreen extends ConsumerWidget {
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (context, i) {
                     final b = section.books[i];
-                    return SizedBox(
-                      width: 104,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          BookCover(book: b, width: 104, height: 120),
-                          const SizedBox(height: 4),
-                          Text(
-                            b.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelMedium,
-                          ),
-                        ],
+                    return GestureDetector(
+                      onTap: () => context.push('/book/${b.id}'),
+                      child: SizedBox(
+                        width: 104,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            BookCover(book: b, width: 104, height: 120),
+                            const SizedBox(height: 4),
+                            Text(
+                              b.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },

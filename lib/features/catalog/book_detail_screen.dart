@@ -1,6 +1,7 @@
 // lib/features/catalog/book_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../widgets/book_cover.dart';
 import '../../widgets/error_state.dart';
 import '../../widgets/loading_skeleton.dart';
@@ -65,7 +66,10 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
                   Text('${book.availableCopies} of ${book.totalCopies} copies available'),
                 ]),
                 const SizedBox(height: 10),
-                const Text('Borrowed — see My Loans for the due date'),
+                TextButton(
+                    onPressed: () => context.go('/loans'),
+                    child:
+                        const Text('Borrowed — see My Loans for the due date')),
               ] else if (available) ...[
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.check_circle, size: 15),

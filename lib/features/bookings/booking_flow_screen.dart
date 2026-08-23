@@ -1,6 +1,7 @@
 // lib/features/bookings/booking_flow_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../models/resource.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
@@ -123,7 +124,12 @@ class BookingFlowScreen extends ConsumerWidget {
           Text('Booked', style: Theme.of(context).textTheme.titleLarge),
           Text('${flow.selectedResource?.name}, ${_dateLabel(flow.dateIndex)} · ${flow.selectedSlot}'),
           const SizedBox(height: 12),
-          FilledButton(onPressed: () { notifier.reset(); }, child: const Text('View My Bookings')),
+          FilledButton(
+              onPressed: () {
+                notifier.reset();
+                context.go('/bookings');
+              },
+              child: const Text('View My Bookings')),
         ]),
       ));
     }

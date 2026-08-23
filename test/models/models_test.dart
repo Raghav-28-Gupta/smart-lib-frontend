@@ -6,7 +6,7 @@ import 'package:smartlib_frontend/models/resource_booking.dart';
 
 void main() {
   test('Book.initial is the uppercased first letter of the title', () {
-    final b = Book(
+    const b = Book(
       id: 'b1',
       title: 'atomic habits',
       author: 'James Clear',
