@@ -6,6 +6,7 @@ import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/recommendations/recommendations_screen.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import '../../support/mock_overrides.dart';
 
 class _EmptyLoanRepository implements LoanRepository {
   @override
@@ -24,9 +25,7 @@ class _EmptyLoanRepository implements LoanRepository {
 void main() {
   testWidgets('a fresh user (no loans) sees the popular-right-now copy and sections', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [
-        loanRepositoryProvider.overrideWithValue(_EmptyLoanRepository()),
-      ],
+      overrides: mockRepositoryOverrides(loans: _EmptyLoanRepository()),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const RecommendationsScreen(),
@@ -39,6 +38,7 @@ void main() {
 
   testWidgets('a user with loans sees the based-on-your-loans copy', (tester) async {
     await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const RecommendationsScreen(),

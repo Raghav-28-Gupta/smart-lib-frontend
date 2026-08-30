@@ -7,6 +7,7 @@ import 'package:smartlib_frontend/core/ui/confirm_dialog.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/profile/profile_screen.dart';
 import 'package:smartlib_frontend/models/app_user.dart';
+import '../../support/mock_overrides.dart';
 
 class _LoggedInAuthController extends AuthController {
   @override
@@ -24,7 +25,10 @@ class _LoggedInAuthController extends AuthController {
 void main() {
   testWidgets('shows the reliability tier, note, and name for the logged-in user', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [authControllerProvider.overrideWith(_LoggedInAuthController.new)],
+      overrides: [
+        authControllerProvider.overrideWith(_LoggedInAuthController.new),
+        ...mockRepositoryOverrides(),
+      ],
       child: MaterialApp(theme: buildSmartLibTheme(), home: const ProfileScreen()),
     ));
     await tester.pumpAndSettle();
@@ -34,7 +38,10 @@ void main() {
 
   testWidgets('"How reliability works" opens the info dialog with the exact copy', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [authControllerProvider.overrideWith(_LoggedInAuthController.new)],
+      overrides: [
+        authControllerProvider.overrideWith(_LoggedInAuthController.new),
+        ...mockRepositoryOverrides(),
+      ],
       child: const MaterialApp(
         home: Scaffold(
           body: Stack(

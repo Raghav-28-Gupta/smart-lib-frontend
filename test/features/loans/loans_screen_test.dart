@@ -5,10 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/core/ui/confirm_dialog.dart';
 import 'package:smartlib_frontend/features/loans/loans_screen.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets('shows the overdue fine and the renewal-blocked reason', (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(), home: const LoansScreen(),
     )));
     await tester.pumpAndSettle();
@@ -17,7 +18,7 @@ void main() {
   });
 
   testWidgets("tapping Return opens the confirm dialog with the design's exact copy", (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(),
       home: const Scaffold(body: Stack(children: [LoansScreen(), ConfirmDialogHost()])),
     )));

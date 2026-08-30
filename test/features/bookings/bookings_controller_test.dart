@@ -3,17 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/bookings/bookings_controller.dart';
 import 'package:smartlib_frontend/models/resource_booking.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   test('build() loads the 2 seeded bookings', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     final bookings = await container.read(bookingsControllerProvider.future);
     expect(bookings.length, 2);
   });
 
   test('the timer ticks down graceRemainingSeconds for the in-window booking', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(bookingsControllerProvider.future);
     final before = container.read(bookingsControllerProvider).value!.firstWhere((b) => b.id == 'bk2').graceRemainingSeconds;
@@ -23,7 +24,7 @@ void main() {
   });
 
   test('checkIn flips the booking to checkedIn in state', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(bookingsControllerProvider.future);
     await container.read(bookingsControllerProvider.notifier).checkIn('bk2');
@@ -32,7 +33,7 @@ void main() {
   });
 
   test('cancel removes the booking from state', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(bookingsControllerProvider.future);
     await container.read(bookingsControllerProvider.notifier).cancel('bk1');

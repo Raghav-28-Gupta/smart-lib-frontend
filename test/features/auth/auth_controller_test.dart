@@ -1,12 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   test(
       'login with empty fields sets a validation message and does not call the repository',
       () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(authControllerProvider.notifier).login('', '');
     final state = container.read(authControllerProvider);
@@ -15,7 +16,7 @@ void main() {
   });
 
   test('login with the seeded account succeeds', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container
         .read(authControllerProvider.notifier)
@@ -27,7 +28,7 @@ void main() {
 
   test('login with an unknown email sets the mismatch validation message',
       () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container
         .read(authControllerProvider.notifier)
@@ -39,7 +40,7 @@ void main() {
   });
 
   test('register with all fields succeeds and creates a fresh user', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container
         .read(authControllerProvider.notifier)
@@ -50,7 +51,7 @@ void main() {
   });
 
   test('logOut resets to the logged-out state', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     final notifier = container.read(authControllerProvider.notifier);
     await notifier.login('aditi.sharma@thapar.edu', 'anything');

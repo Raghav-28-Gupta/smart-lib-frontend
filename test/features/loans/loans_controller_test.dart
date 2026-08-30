@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/loans/loans_controller.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   test('build() loads the 4 seeded loans, one of which is overdue', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     final loans = await container.read(loansControllerProvider.future);
     expect(loans.length, 4);
@@ -16,7 +17,7 @@ void main() {
   });
 
   test('renew marks the loan justRenewed and clears overdue status', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(loansControllerProvider.future);
     await container.read(loansControllerProvider.notifier).renew('loan3');
@@ -27,7 +28,7 @@ void main() {
   });
 
   test('returnLoan removes the loan from the list', () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await container.read(loansControllerProvider.future);
     await container.read(loansControllerProvider.notifier).returnLoan('loan1');

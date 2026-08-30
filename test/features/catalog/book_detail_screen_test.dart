@@ -6,6 +6,7 @@ import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/catalog/book_detail_screen.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import '../../support/mock_overrides.dart';
 
 class _CleanLoanRepository implements LoanRepository {
   _CleanLoanRepository() {
@@ -54,9 +55,7 @@ class _CleanLoanRepository implements LoanRepository {
 void main() {
   testWidgets('an available book shows the Borrow button and copy count', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [
-        loanRepositoryProvider.overrideWithValue(_CleanLoanRepository()),
-      ],
+      overrides: mockRepositoryOverrides(loans: _CleanLoanRepository()),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const BookDetailScreen(bookId: 'b1'),
@@ -69,9 +68,7 @@ void main() {
 
   testWidgets('borrowing flips the button to the Borrowed state', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [
-        loanRepositoryProvider.overrideWithValue(_CleanLoanRepository()),
-      ],
+      overrides: mockRepositoryOverrides(loans: _CleanLoanRepository()),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const BookDetailScreen(bookId: 'b1'),
@@ -84,7 +81,7 @@ void main() {
   });
 
   testWidgets('an unavailable book shows the waitlist copy and Join Waitlist button', (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(), home: const BookDetailScreen(bookId: 'b2'),
     )));
     await tester.pumpAndSettle();

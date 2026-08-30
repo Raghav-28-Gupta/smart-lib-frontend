@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/bookings/bookings_screen.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets('shows the far-booking and in-window copy for the seeded bookings', (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(), home: const BookingsScreen(),
     )));
     await tester.pumpAndSettle();

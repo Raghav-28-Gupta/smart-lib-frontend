@@ -6,6 +6,7 @@ import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/home/home_screen.dart';
 import 'package:smartlib_frontend/models/app_user.dart';
+import '../../support/mock_overrides.dart';
 
 class _LoggedInAuthController extends AuthController {
   @override
@@ -23,7 +24,10 @@ class _LoggedInAuthController extends AuthController {
 void main() {
   testWidgets('shows the returning-user greeting and both quick-glance sections', (tester) async {
     await tester.pumpWidget(ProviderScope(
-      overrides: [authControllerProvider.overrideWith(_LoggedInAuthController.new)],
+      overrides: [
+        authControllerProvider.overrideWith(_LoggedInAuthController.new),
+        ...mockRepositoryOverrides(),
+      ],
       child: MaterialApp(theme: buildSmartLibTheme(), home: const HomeScreen()),
     ));
     await tester.pumpAndSettle();

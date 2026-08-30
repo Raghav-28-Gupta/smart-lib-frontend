@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/catalog/search_screen.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets('shows all 12 seeded books by default', (tester) async {
     await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const SearchScreen(),
@@ -19,6 +21,7 @@ void main() {
   testWidgets('typing a query with no matches shows the empty state',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const SearchScreen(),

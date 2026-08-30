@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/bookings/booking_flow_screen.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets('picking a free slot and confirming shows the Booked success screen', (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(), home: const BookingFlowScreen(),
     )));
     await tester.pumpAndSettle();
@@ -21,7 +22,7 @@ void main() {
   });
 
   testWidgets('room type 2+ days out shows the no-rooms-free empty state', (tester) async {
-    await tester.pumpWidget(ProviderScope(child: MaterialApp(
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
       theme: buildSmartLibTheme(), home: const BookingFlowScreen(),
     )));
     await tester.pumpAndSettle();

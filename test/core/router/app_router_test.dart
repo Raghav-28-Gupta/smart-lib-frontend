@@ -4,10 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/router/app_router.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets('starts on the auth screen when logged out', (tester) async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
@@ -23,7 +24,7 @@ void main() {
   });
 
   testWidgets('logging in redirects to Home and shows the tab bar', (tester) async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,
