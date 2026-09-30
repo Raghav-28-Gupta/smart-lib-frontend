@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 9+ blocks plain-HTTP traffic by default, and the dev backend
+         is http://10.0.2.2:3000; without this, every API request from the
+         emulator fails. Debug builds only: release keeps the default. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>
