@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/auth/auth_screen.dart';
+import '../../support/mock_overrides.dart';
 
 void main() {
   testWidgets(
       'submitting the login form with empty fields shows the validation message',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const AuthScreen(),
@@ -22,6 +24,7 @@ void main() {
   testWidgets('switching to Create account shows the registration fields',
       (tester) async {
     await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const AuthScreen(),

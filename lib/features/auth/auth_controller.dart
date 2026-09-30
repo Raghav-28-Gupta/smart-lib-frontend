@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api_exception.dart';
+import '../../core/auth/token_store.dart';
 import '../../models/app_user.dart';
 import 'auth_repository.dart';
 
@@ -37,21 +40,62 @@ class AuthState {
 }
 
 class AuthController extends Notifier<AuthState> {
+  static const sessionExpiredMessage = 'Your session has expired. Please log in again.';
+
   @override
   AuthState build() {
+    final tokens = ref.read(tokenStoreProvider);
+    tokens.addListener(_onTokenChanged);
+    ref.onDispose(() => tokens.removeListener(_onTokenChanged));
+
     // build() can't await, so the check is scheduled rather than run inline;
     // until it resolves, the status stays unknown and the splash stays up.
     Future.microtask(restoreSession);
     return const AuthState();
   }
 
-  /// Resolves the startup status. There is no persisted session to restore
-  /// yet, so this settles straight on unauthenticated.
+  // The API interceptor drops the token when the server rejects it. If that
+  // happens while logged in, the session is over -- say so, rather than
+  // silently dropping the user on the login screen.
+  void _onTokenChanged() {
+    if (!ref.mounted) return;
+    if (ref.read(tokenStoreProvider).token == null && state.status == AuthStatus.authenticated) {
+      state = const AuthState(status: AuthStatus.unauthenticated, validationMessage: sessionExpiredMessage);
+    }
+  }
+
+  // Only ever resolve *from* unknown: never clobber a login that raced the
+  // check, and never touch a controller disposed while it was awaiting.
+  bool get _stillRestoring => ref.mounted && state.status == AuthStatus.unknown;
+
+  /// Resolves the startup status from the token saved by a previous launch.
+  /// Must always resolve -- the user is held on the splash screen until it does.
   Future<void> restoreSession() async {
-    // Only ever resolves *from* unknown: never clobber a login that raced it,
-    // and never touch a controller that was disposed before this ran.
-    if (!ref.mounted || state.status != AuthStatus.unknown) return;
-    state = state.copyWith(status: AuthStatus.unauthenticated);
+    if (!_stillRestoring) return;
+    final tokens = ref.read(tokenStoreProvider);
+    final token = await tokens.restore();
+    if (!_stillRestoring) return;
+    if (token == null) {
+      state = state.copyWith(status: AuthStatus.unauthenticated);
+      return;
+    }
+
+    try {
+      final user = await ref.read(authRepositoryProvider).me();
+      if (!_stillRestoring) return;
+      state = state.copyWith(status: AuthStatus.authenticated, user: user);
+    } on UnauthorizedException {
+      // Expired or revoked. Over HTTP the interceptor already cleared it; this
+      // makes the outcome independent of how the rejection arrived.
+      await tokens.clear();
+      if (_stillRestoring) state = state.copyWith(status: AuthStatus.unauthenticated);
+    } catch (e) {
+      // Server unreachable, or something unexpected. Neither is a verdict on
+      // the token, so it's kept for the next launch -- but the user still has
+      // to land somewhere, and login is where they can act.
+      debugPrint('AuthController: session restore failed: $e');
+      if (_stillRestoring) state = state.copyWith(status: AuthStatus.unauthenticated);
+    }
   }
 
   void clearValidation() => state = state.copyWith(clearValidation: true);
@@ -89,9 +133,14 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  // Unauthenticated, not a fresh AuthState(): that would be `unknown`, and the
-  // router would park the user on the splash screen with nothing to move them.
-  void logOut() => state = const AuthState(status: AuthStatus.unauthenticated);
+  Future<void> logOut() async {
+    // Unauthenticated, not a fresh AuthState(): that would be `unknown`, and
+    // the router would park the user on the splash with nothing to move them.
+    // Set before clearing the token, so the token listener doesn't read a
+    // deliberate logout as an expired session.
+    state = const AuthState(status: AuthStatus.unauthenticated);
+    await ref.read(tokenStoreProvider).clear();
+  }
 }
 
 final authControllerProvider =
