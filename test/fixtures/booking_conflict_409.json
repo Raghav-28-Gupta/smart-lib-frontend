@@ -1,0 +1,23 @@
+{
+  "error": "This resource is already booked for that time.",
+  "details": {
+    "alternatives": [
+      {
+        "resourceId": "r1",
+        "resourceName": "Group Room 201 · 4 seats",
+        "resourceType": "room",
+        "timeSlot": "9:00 AM",
+        "startTime": "2026-09-30T03:30:00.000Z",
+        "endTime": "2026-09-30T04:30:00.000Z"
+      },
+      {
+        "resourceId": "r3",
+        "resourceName": "Discussion Pod 1 · 2 seats",
+        "resourceType": "room",
+        "timeSlot": "2:00 PM",
+        "startTime": "2026-09-30T08:30:00.000Z",
+        "endTime": "2026-09-30T09:30:00.000Z"
+      }
+    ]
+  }
+}

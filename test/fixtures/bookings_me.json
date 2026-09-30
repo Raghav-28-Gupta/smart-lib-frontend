@@ -1,0 +1,28 @@
+[
+  {
+    "id": "8b29572c-2fca-4668-9dc8-5d5924f5dd49",
+    "userId": "u1",
+    "resourceId": "s3",
+    "resourceName": "Silent Zone · Desk 3",
+    "resourceType": "seat",
+    "startTime": "2026-09-30T11:53:58.000Z",
+    "endTime": "2026-09-30T12:53:58.000Z",
+    "status": "booked",
+    "frontendStatus": "inWindow",
+    "graceRemainingSeconds": 778,
+    "checkedInAt": null
+  },
+  {
+    "id": "b791388f-4962-4444-b1d4-bcc586a848b4",
+    "userId": "u1",
+    "resourceId": "s3",
+    "resourceName": "Silent Zone · Desk 3",
+    "resourceType": "seat",
+    "startTime": "2026-10-01T04:30:00.000Z",
+    "endTime": "2026-10-01T05:30:00.000Z",
+    "status": "booked",
+    "frontendStatus": "upcomingFar",
+    "graceRemainingSeconds": 0,
+    "checkedInAt": null
+  }
+]

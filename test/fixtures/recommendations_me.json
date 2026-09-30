@@ -1,0 +1,71 @@
+{
+  "note": "Personalized picks are on the way — for now, here's what's popular in the library.",
+  "sections": [
+    {
+      "title": "Trending in the library",
+      "caption": "Most borrowed in the last 30 days",
+      "books": [
+        {
+          "id": "b3",
+          "isbn": "978-seed-b3",
+          "title": "Database System Concepts",
+          "author": "Silberschatz, Korth & Sudarshan",
+          "genre": "Databases",
+          "description": "The relational model, SQL, normalization, transaction processing, and query optimization.",
+          "publishedYear": null,
+          "totalCopies": 5,
+          "availableCopies": 2,
+          "waitlistCount": 0
+        },
+        {
+          "id": "b4",
+          "isbn": "978-seed-b4",
+          "title": "Computer Networks",
+          "author": "Andrew S. Tanenbaum",
+          "genre": "Networks",
+          "description": "A layer-by-layer treatment of network architecture, from the physical layer up through applications.",
+          "publishedYear": null,
+          "totalCopies": 3,
+          "availableCopies": 1,
+          "waitlistCount": 0
+        },
+        {
+          "id": "b8",
+          "isbn": "978-seed-b8",
+          "title": "Clean Code",
+          "author": "Robert C. Martin",
+          "genre": "Software Eng.",
+          "description": "Practical guidance on writing maintainable code, with before-and-after refactoring examples.",
+          "publishedYear": null,
+          "totalCopies": 4,
+          "availableCopies": 2,
+          "waitlistCount": 1
+        },
+        {
+          "id": "b1",
+          "isbn": "978-seed-b1",
+          "title": "Introduction to Algorithms",
+          "author": "Cormen, Leiserson, Rivest & Stein",
+          "genre": "Algorithms",
+          "description": "The standard reference on algorithm design and analysis — sorting, graph algorithms, dynamic programming, and NP-completeness, with rigorous proofs throughout.",
+          "publishedYear": null,
+          "totalCopies": 4,
+          "availableCopies": 1,
+          "waitlistCount": 0
+        },
+        {
+          "id": "b12",
+          "isbn": "978-seed-b12",
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "genre": "Non-fiction",
+          "description": "A practical framework for building good habits and breaking bad ones.",
+          "publishedYear": null,
+          "totalCopies": 3,
+          "availableCopies": 1,
+          "waitlistCount": 0
+        }
+      ]
+    }
+  ]
+}

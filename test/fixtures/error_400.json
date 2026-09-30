@@ -1,0 +1,17 @@
+{
+  "error": "Invalid request body",
+  "details": {
+    "formErrors": [],
+    "fieldErrors": {
+      "resourceId": [
+        "Invalid input: expected string, received undefined"
+      ],
+      "startTime": [
+        "Invalid input: expected string, received undefined"
+      ],
+      "endTime": [
+        "Invalid input: expected string, received undefined"
+      ]
+    }
+  }
+}

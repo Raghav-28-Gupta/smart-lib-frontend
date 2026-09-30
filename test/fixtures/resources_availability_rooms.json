@@ -1,0 +1,44 @@
+[
+  {
+    "id": "r3",
+    "type": "room",
+    "name": "Discussion Pod 1 · 2 seats",
+    "location": null,
+    "capacity": 2,
+    "takenSlotsToday": [
+      "10:00 AM",
+      "11:00 AM"
+    ]
+  },
+  {
+    "id": "r1",
+    "type": "room",
+    "name": "Group Room 201 · 4 seats",
+    "location": null,
+    "capacity": 4,
+    "takenSlotsToday": [
+      "2:00 PM",
+      "3:00 PM"
+    ]
+  },
+  {
+    "id": "r2",
+    "type": "room",
+    "name": "Group Room 202 · 6 seats",
+    "location": null,
+    "capacity": 6,
+    "takenSlotsToday": [
+      "9:00 AM",
+      "10:00 AM",
+      "11:00 AM",
+      "12:00 PM",
+      "1:00 PM",
+      "2:00 PM",
+      "3:00 PM",
+      "4:00 PM",
+      "5:00 PM",
+      "6:00 PM",
+      "7:00 PM"
+    ]
+  }
+]

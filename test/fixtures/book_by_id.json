@@ -1,0 +1,12 @@
+{
+  "id": "b1",
+  "isbn": "978-seed-b1",
+  "title": "Introduction to Algorithms",
+  "author": "Cormen, Leiserson, Rivest & Stein",
+  "genre": "Algorithms",
+  "description": "The standard reference on algorithm design and analysis — sorting, graph algorithms, dynamic programming, and NP-completeness, with rigorous proofs throughout.",
+  "publishedYear": null,
+  "totalCopies": 4,
+  "availableCopies": 1,
+  "waitlistCount": 0
+}

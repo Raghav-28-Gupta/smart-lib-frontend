@@ -1,0 +1,13 @@
+{
+  "id": "8b29572c-2fca-4668-9dc8-5d5924f5dd49",
+  "userId": "u1",
+  "resourceId": "s3",
+  "resourceName": "Silent Zone · Desk 3",
+  "resourceType": "seat",
+  "startTime": "2026-09-30T11:53:58.000Z",
+  "endTime": "2026-09-30T12:53:58.000Z",
+  "status": "checked_in",
+  "frontendStatus": "checkedIn",
+  "graceRemainingSeconds": 0,
+  "checkedInAt": "2026-09-30T11:56:00.950Z"
+}

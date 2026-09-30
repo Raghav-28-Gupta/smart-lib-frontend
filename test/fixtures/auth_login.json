@@ -1,0 +1,10 @@
+{
+  "user": {
+    "id": "u1",
+    "name": "Aditi Sharma",
+    "email": "aditi.sharma@thapar.edu",
+    "roll": "1024160143",
+    "role": "student"
+  },
+  "token": "<redacted-jwt>"
+}
