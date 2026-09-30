@@ -12,14 +12,18 @@
 // production default is. A function (not a const list) because each
 // container needs its own fresh Mock instances -- sharing one across tests
 // would leak state between them.
+import 'package:smartlib_frontend/core/auth/token_store.dart';
 import 'package:smartlib_frontend/features/auth/auth_repository.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/profile/profile_repository.dart';
 import 'package:smartlib_frontend/features/recommendations/recommendation_repository.dart';
+import 'fake_token_store.dart';
 
-/// Overrides all six repository providers to (fresh, by default) mocks.
+/// Overrides all six repository providers to (fresh, by default) mocks, and
+/// the token store to in-memory persistence -- so no test reaches the network
+/// or a real platform keystore.
 ///
 /// Pass a repository instance for any provider a specific test needs to
 /// *substitute* -- e.g. `mockRepositoryOverrides(loans: _CleanLoanRepository())`
@@ -38,6 +42,7 @@ mockRepositoryOverrides({
   BookingRepository? bookings,
   ProfileRepository? profile,
   RecommendationRepository? recommendations,
+  TokenStore? tokens,
 }) {
   return [
     authRepositoryProvider.overrideWith((ref) => auth ?? MockAuthRepository()),
@@ -52,5 +57,13 @@ mockRepositoryOverrides({
     recommendationRepositoryProvider.overrideWith(
       (ref) => recommendations ?? MockRecommendationRepository(ref.watch(bookRepositoryProvider)),
     ),
+    tokenStoreProvider.overrideWith((ref) {
+      // A store passed in belongs to the test (which may pre-seed or inspect
+      // it), so only dispose the ones created here.
+      if (tokens != null) return tokens;
+      final store = TokenStore(InMemoryTokenPersistence());
+      ref.onDispose(store.dispose);
+      return store;
+    }),
   ];
 }
