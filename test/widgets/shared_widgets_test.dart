@@ -34,7 +34,6 @@ void main() {
     const book = Book(
       id: 'b1', title: 'Clean Code', author: 'Robert C. Martin', genre: 'Software Eng.',
       description: 'd', totalCopies: 4, availableCopies: 2, waitlistCount: 0,
-      coverPalette: CoverPalette.accent2,
     );
     await tester.pumpWidget(MaterialApp(
         theme: buildSmartLibTheme(),

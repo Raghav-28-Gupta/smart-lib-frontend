@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/models/book.dart';
 import 'package:smartlib_frontend/models/loan.dart';
 import 'package:smartlib_frontend/models/resource_booking.dart';
@@ -15,7 +14,6 @@ void main() {
       totalCopies: 3,
       availableCopies: 2,
       waitlistCount: 0,
-      coverPalette: CoverPalette.neutral,
     );
     expect(b.initial, 'A');
   });

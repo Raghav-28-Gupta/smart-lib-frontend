@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/theme/smartlib_theme.dart';
 import '../../models/book.dart';
 
 const kGenres = [
@@ -32,8 +31,7 @@ const _seedBooks = [
           'The standard reference on algorithm design and analysis — sorting, graph algorithms, dynamic programming, and NP-completeness, with rigorous proofs throughout.',
       totalCopies: 4,
       availableCopies: 1,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent),
+      waitlistCount: 0),
   Book(
       id: 'b2',
       title: 'Operating System Concepts',
@@ -43,8 +41,7 @@ const _seedBooks = [
           'Process management, memory management, file systems, and concurrency — the core operating systems course text.',
       totalCopies: 3,
       availableCopies: 0,
-      waitlistCount: 2,
-      coverPalette: CoverPalette.neutral),
+      waitlistCount: 2),
   Book(
       id: 'b3',
       title: 'Database System Concepts',
@@ -54,8 +51,7 @@ const _seedBooks = [
           'The relational model, SQL, normalization, transaction processing, and query optimization.',
       totalCopies: 5,
       availableCopies: 2,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent2),
+      waitlistCount: 0),
   Book(
       id: 'b4',
       title: 'Computer Networks',
@@ -65,8 +61,7 @@ const _seedBooks = [
           'A layer-by-layer treatment of network architecture, from the physical layer up through applications.',
       totalCopies: 3,
       availableCopies: 1,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent),
+      waitlistCount: 0),
   Book(
       id: 'b5',
       title: 'Data Structures and Algorithms in Java',
@@ -76,8 +71,7 @@ const _seedBooks = [
           'Core data structures — trees, graphs, hash tables — built up from first principles with working Java code.',
       totalCopies: 6,
       availableCopies: 3,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent2),
+      waitlistCount: 0),
   Book(
       id: 'b6',
       title: 'Design Patterns',
@@ -87,8 +81,7 @@ const _seedBooks = [
           'The classic catalog of object-oriented design patterns, from the Gang of Four.',
       totalCopies: 2,
       availableCopies: 0,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.neutral),
+      waitlistCount: 0),
   Book(
       id: 'b7',
       title: 'Artificial Intelligence: A Modern Approach',
@@ -98,8 +91,7 @@ const _seedBooks = [
           'A comprehensive survey of AI, from search and logic through machine learning.',
       totalCopies: 3,
       availableCopies: 1,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent),
+      waitlistCount: 0),
   Book(
       id: 'b8',
       title: 'Clean Code',
@@ -109,8 +101,7 @@ const _seedBooks = [
           'Practical guidance on writing maintainable code, with before-and-after refactoring examples.',
       totalCopies: 4,
       availableCopies: 2,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent2),
+      waitlistCount: 0),
   Book(
       id: 'b9',
       title: 'The Midnight Library',
@@ -120,8 +111,7 @@ const _seedBooks = [
           'A novel about all the lives you could have lived, told through a library between life and death.',
       totalCopies: 2,
       availableCopies: 1,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.neutral),
+      waitlistCount: 0),
   Book(
       id: 'b10',
       title: 'Project Hail Mary',
@@ -131,8 +121,7 @@ const _seedBooks = [
           "A lone astronaut wakes with no memory of his mission — or that humanity's survival depends on it.",
       totalCopies: 3,
       availableCopies: 0,
-      waitlistCount: 4,
-      coverPalette: CoverPalette.accent),
+      waitlistCount: 4),
   Book(
       id: 'b11',
       title: 'Sapiens',
@@ -142,8 +131,7 @@ const _seedBooks = [
           'A sweeping account of how Homo sapiens came to dominate the planet.',
       totalCopies: 2,
       availableCopies: 1,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.accent2),
+      waitlistCount: 0),
   Book(
       id: 'b12',
       title: 'Atomic Habits',
@@ -153,8 +141,7 @@ const _seedBooks = [
           'A practical framework for building good habits and breaking bad ones.',
       totalCopies: 3,
       availableCopies: 2,
-      waitlistCount: 0,
-      coverPalette: CoverPalette.neutral),
+      waitlistCount: 0),
 ];
 
 class MockBookRepository implements BookRepository {
