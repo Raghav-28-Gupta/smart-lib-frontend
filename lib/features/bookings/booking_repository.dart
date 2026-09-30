@@ -1,11 +1,7 @@
 // lib/features/bookings/booking_repository.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/resource_booking.dart';
-
-const kTimeSlots = [
-  '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM',
-  '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM',
-];
+import 'time_slots.dart';
 
 const _seatSeed = [
   Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: ['11:00 AM', '12:00 PM']),

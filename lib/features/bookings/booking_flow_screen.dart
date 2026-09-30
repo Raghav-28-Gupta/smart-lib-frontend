@@ -6,7 +6,7 @@ import '../../models/resource.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
 import 'booking_flow_controller.dart';
-import 'booking_repository.dart';
+import 'time_slots.dart';
 
 const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
