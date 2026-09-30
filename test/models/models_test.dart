@@ -41,7 +41,7 @@ void main() {
       resourceName: 'Group Room 201',
       type: ResourceType.room,
       startTime: DateTime(2026, 8, 22, 12),
-      timeSlot: '12:00 - 1:00 PM',
+      endTime: DateTime(2026, 8, 22, 13),
       status: BookingStatus.inWindow,
       graceRemainingSeconds: 587,
     );

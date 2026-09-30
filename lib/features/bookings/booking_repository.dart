@@ -1,5 +1,6 @@
 // lib/features/bookings/booking_repository.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/booking_alternative.dart';
 import '../../models/resource_booking.dart';
 import 'time_slots.dart';
 
@@ -15,12 +16,6 @@ const _roomSeed = [
   Resource(id: 'r2', name: 'Group Room 202 · 6 seats', type: ResourceType.room, takenSlotsToday: kTimeSlots),
   Resource(id: 'r3', name: 'Discussion Pod 1 · 2 seats', type: ResourceType.room, takenSlotsToday: ['10:00 AM', '11:00 AM']),
 ];
-
-class BookingAlternative {
-  BookingAlternative({required this.resource, required this.timeSlot});
-  final Resource resource;
-  final String timeSlot;
-}
 
 class BookingConflictException implements Exception {
   BookingConflictException(this.alternatives);
@@ -38,9 +33,10 @@ abstract class BookingRepository {
 class MockBookingRepository implements BookingRepository {
   MockBookingRepository() {
     final now = DateTime.now();
+    final farStart = now.add(const Duration(hours: 2, minutes: 15));
     _bookings = [
-      ResourceBooking(id: 'bk1', resourceName: 'Reading Room A · Desk 4', type: ResourceType.seat, startTime: now.add(const Duration(hours: 2, minutes: 15)), timeSlot: '3:00 – 5:00 PM', status: BookingStatus.upcomingFar),
-      ResourceBooking(id: 'bk2', resourceName: 'Group Room 201', type: ResourceType.room, startTime: now, timeSlot: '12:00 – 1:00 PM', status: BookingStatus.inWindow, graceRemainingSeconds: 587),
+      ResourceBooking(id: 'bk1', resourceName: 'Reading Room A · Desk 4', type: ResourceType.seat, startTime: farStart, endTime: farStart.add(const Duration(hours: 2)), status: BookingStatus.upcomingFar),
+      ResourceBooking(id: 'bk2', resourceName: 'Group Room 201', type: ResourceType.room, startTime: now, endTime: now.add(const Duration(hours: 1)), status: BookingStatus.inWindow, graceRemainingSeconds: 587),
     ];
   }
 
@@ -48,6 +44,14 @@ class MockBookingRepository implements BookingRepository {
   final Set<String> _extraTaken = {};
 
   String _key(String resourceId, int dateIndex, String slot) => '$resourceId|$dateIndex|$slot';
+
+  // Shapes a scripted alternative the way the real 409 does: a resource plus
+  // an exact window, rather than a label.
+  BookingAlternative _alternative(String resourceId, int dateIndex, String label) {
+    final r = _seatSeed.firstWhere((s) => s.id == resourceId);
+    final window = slotWindow(dateIndex, label);
+    return BookingAlternative(resourceId: r.id, resourceName: r.name, resourceType: r.type, startTime: window.start, endTime: window.end);
+  }
 
   @override
   Future<List<Resource>> resources(ResourceType type, int dateIndex) async {
@@ -65,13 +69,14 @@ class MockBookingRepository implements BookingRepository {
     if (resource.id == 's1' && dateIndex == 0 && timeSlot == '5:00 PM') {
       _extraTaken.add(_key('s1', 0, '5:00 PM'));
       throw BookingConflictException([
-        BookingAlternative(resource: _seatSeed.firstWhere((r) => r.id == 's1'), timeSlot: '6:00 PM'),
-        BookingAlternative(resource: _seatSeed.firstWhere((r) => r.id == 's3'), timeSlot: '5:00 PM'),
+        _alternative('s1', dateIndex, '6:00 PM'),
+        _alternative('s3', dateIndex, '5:00 PM'),
       ]);
     }
+    final window = slotWindow(dateIndex, timeSlot);
     final booking = ResourceBooking(
       id: 'bk-${DateTime.now().microsecondsSinceEpoch}', resourceName: resource.name, type: resource.type,
-      startTime: DateTime.now().add(Duration(days: dateIndex)), timeSlot: timeSlot, status: BookingStatus.upcomingFar,
+      startTime: window.start, endTime: window.end, status: BookingStatus.upcomingFar,
     );
     _bookings.insert(0, booking);
     return booking;

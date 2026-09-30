@@ -142,7 +142,7 @@ class BookingFlowScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           for (final alt in flow.conflictAlternatives!)
             Card(child: ListTile(
-              title: Text(alt.resource.name),
+              title: Text(alt.resourceName),
               subtitle: Text('${_dateLabel(flow.dateIndex)} · ${alt.timeSlot}'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => notifier.pickAlternative(alt),

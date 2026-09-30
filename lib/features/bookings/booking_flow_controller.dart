@@ -1,5 +1,6 @@
 // lib/features/bookings/booking_flow_controller.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/booking_alternative.dart';
 import '../../models/resource_booking.dart';
 import 'booking_repository.dart';
 import 'bookings_controller.dart';
@@ -71,7 +72,7 @@ class BookingFlowController extends Notifier<BookingFlowState> {
   }
 
   void pickAlternative(BookingAlternative a) =>
-      state = state.copyWith(selectedResource: a.resource, selectedSlot: a.timeSlot, clearAlternatives: true, clearResult: true);
+      state = state.copyWith(selectedResource: a.toResource(), selectedSlot: a.timeSlot, clearAlternatives: true, clearResult: true);
 
   void reset() => state = const BookingFlowState();
 }
