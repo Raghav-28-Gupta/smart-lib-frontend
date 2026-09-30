@@ -1,10 +1,26 @@
 // test/core/router/app_router_test.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/router/app_router.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
+import 'package:smartlib_frontend/features/auth/auth_controller.dart';
+import 'package:smartlib_frontend/features/auth/splash_screen.dart';
 import '../../support/mock_overrides.dart';
+
+/// Holds the startup session check open until [gate] completes, so a test can
+/// observe the app while the check is still running.
+class _GatedRestoreController extends AuthController {
+  _GatedRestoreController(this.gate);
+  final Completer<void> gate;
+
+  @override
+  Future<void> restoreSession() async {
+    await gate.future;
+    await super.restoreSession();
+  }
+}
 
 void main() {
   testWidgets('starts on the auth screen when logged out', (tester) async {
@@ -21,6 +37,34 @@ void main() {
     expect(find.text('SmartLib'), findsOneWidget);
     expect(find.text('Log in'), findsWidgets);
     container.dispose();
+  });
+
+  testWidgets('holds on the splash while the session check runs, then moves to login', (tester) async {
+    // While the check is unresolved the app doesn't know where the user
+    // belongs -- it must show the splash, not a login screen they'd then be
+    // yanked away from.
+    final gate = Completer<void>();
+    final container = ProviderContainer(overrides: [
+      ...mockRepositoryOverrides(),
+      authControllerProvider.overrideWith(() => _GatedRestoreController(gate)),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(
+        theme: buildSmartLibTheme(),
+        routerConfig: container.read(routerProvider),
+      ),
+    ));
+    // Settling here also proves the splash, in place, animates nothing forever.
+    await tester.pumpAndSettle();
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(find.text('Log in'), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(SplashScreen), findsNothing);
+    expect(find.text('Log in'), findsWidgets);
   });
 
   testWidgets('logging in redirects to Home and shows the tab bar', (tester) async {

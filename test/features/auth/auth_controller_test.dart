@@ -50,6 +50,34 @@ void main() {
     expect(state.user?.email, 'new@thapar.edu');
   });
 
+  test('starts unknown, then resolves once session restore finishes', () async {
+    // The router shows the splash screen while the status is unknown.
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
+    addTearDown(container.dispose);
+    expect(container.read(authControllerProvider).status, AuthStatus.unknown);
+
+    await Future<void>.delayed(Duration.zero); // let the scheduled restore run
+    expect(container.read(authControllerProvider).status, AuthStatus.unauthenticated);
+  });
+
+  test('a successful login is authenticated', () async {
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
+    addTearDown(container.dispose);
+    await container.read(authControllerProvider.notifier).login('aditi.sharma@thapar.edu', 'anything');
+    expect(container.read(authControllerProvider).status, AuthStatus.authenticated);
+  });
+
+  test('logOut lands on unauthenticated, not back on unknown', () async {
+    // Unknown means "restore still running" -- the router would park a
+    // logged-out user on the splash screen, and nothing would ever move them.
+    final container = ProviderContainer(overrides: mockRepositoryOverrides());
+    addTearDown(container.dispose);
+    final notifier = container.read(authControllerProvider.notifier);
+    await notifier.login('aditi.sharma@thapar.edu', 'anything');
+    notifier.logOut();
+    expect(container.read(authControllerProvider).status, AuthStatus.unauthenticated);
+  });
+
   test('logOut resets to the logged-out state', () async {
     final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);

@@ -12,7 +12,7 @@ import '../../support/mock_overrides.dart';
 class _LoggedInAuthController extends AuthController {
   @override
   AuthState build() => const AuthState(
-        loggedIn: true,
+        status: AuthStatus.authenticated,
         user: AppUser(
           id: 'u1',
           name: 'Aditi Sharma',

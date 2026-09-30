@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_screen.dart';
+import '../../features/auth/splash_screen.dart';
 import '../../features/bookings/booking_flow_screen.dart';
 import '../../features/bookings/bookings_screen.dart';
 import '../../features/catalog/book_detail_screen.dart';
@@ -15,9 +16,11 @@ import '../../features/recommendations/recommendations_screen.dart';
 import '../ui/confirm_dialog.dart';
 import '../ui/toast_overlay.dart';
 
+// Keyed on status, not loggedIn: unknown -> unauthenticated doesn't change
+// loggedIn (false both ways), but it has to move the user off the splash.
 class _AuthRefresh extends ChangeNotifier {
   _AuthRefresh(Ref ref) {
-    ref.listen(authControllerProvider.select((s) => s.loggedIn), (prev, next) {
+    ref.listen(authControllerProvider.select((s) => s.status), (prev, next) {
       if (prev != next) notifyListeners();
     });
   }
@@ -30,16 +33,19 @@ const _tabLabels = ['Home', 'Search', 'Loans', 'Bookings', 'Profile'];
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _AuthRefresh(ref);
   return GoRouter(
-    initialLocation: '/login',
+    initialLocation: '/splash',
     refreshListenable: refresh,
+    // Runs on the very first frame -- before the session check can finish --
+    // which is why there's an `unknown` state at all.
     redirect: (context, state) {
-      final loggedIn = ref.read(authControllerProvider).loggedIn;
-      final onLogin = state.matchedLocation == '/login';
-      if (!loggedIn && !onLogin) return '/login';
-      if (loggedIn && onLogin) return '/home';
-      return null;
+      final status = ref.read(authControllerProvider).status;
+      final location = state.matchedLocation;
+      if (status == AuthStatus.unknown) return location == '/splash' ? null : '/splash';
+      if (status == AuthStatus.unauthenticated) return location == '/login' ? null : '/login';
+      return (location == '/login' || location == '/splash') ? '/home' : null;
     },
     routes: [
+      GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
       GoRoute(path: '/login', builder: (context, state) => const AuthScreen()),
       ShellRoute(
         builder: (context, state, child) => _AppShell(location: state.matchedLocation, child: child),
