@@ -7,6 +7,7 @@ import '../../widgets/error_state.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../loans/loan_repository.dart';
 import '../loans/loans_controller.dart';
+import '../recommendations/recommendation_repository.dart';
 import 'book_repository.dart';
 import 'catalog_providers.dart';
 
@@ -21,16 +22,24 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   bool _waitlisted = false;
 
   Future<void> _borrow() async {
-    await ref.read(bookRepositoryProvider).borrow(widget.bookId);
     final loan = await ref.read(loanRepositoryProvider).createLoan(widget.bookId);
     ref.read(loansControllerProvider.notifier).prependLoan(loan);
-    ref.invalidate(bookByIdProvider(widget.bookId));
+    _refreshAvailability();
+    // Borrowing moves the "popular right now" ranking.
+    ref.invalidate(recommendationsProvider);
   }
 
   Future<void> _joinWaitlist() async {
     await ref.read(bookRepositoryProvider).joinWaitlist(widget.bookId);
-    ref.invalidate(bookByIdProvider(widget.bookId));
+    _refreshAvailability();
     setState(() => _waitlisted = true);
+  }
+
+  // Availability lives on the server now: refetch this book, and the search
+  // list still mounted underneath, so neither shows a stale count.
+  void _refreshAvailability() {
+    ref.invalidate(bookByIdProvider(widget.bookId));
+    ref.invalidate(searchResultsProvider);
   }
 
   @override

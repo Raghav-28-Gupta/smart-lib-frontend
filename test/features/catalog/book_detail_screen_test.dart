@@ -20,6 +20,9 @@ class _CleanLoanRepository implements LoanRepository {
 
   late List<Loan> _loans;
 
+  /// Book ids passed to createLoan, in call order.
+  final createdFor = <String>[];
+
   @override
   Future<List<Loan>> activeLoans() async => List.of(_loans);
 
@@ -41,6 +44,7 @@ class _CleanLoanRepository implements LoanRepository {
 
   @override
   Future<Loan> createLoan(String bookId) async {
+    createdFor.add(bookId);
     final loan = Loan(
       id: 'loan-$bookId-${DateTime.now().microsecondsSinceEpoch}', bookId: bookId,
       dueDate: DateTime.now().add(const Duration(days: 14)), status: LoanStatus.normal,
@@ -66,9 +70,13 @@ void main() {
     expect(find.text('Borrow this copy'), findsOneWidget);
   });
 
-  testWidgets('borrowing flips the button to the Borrowed state', (tester) async {
+  testWidgets('borrowing flips the button to the Borrowed state, creating exactly one loan', (tester) async {
+    // Borrowing used to go through both the book and the loan repository,
+    // which are the same POST /loans -- so the real server saw a second
+    // borrow and refused it as a 409.
+    final loans = _CleanLoanRepository();
     await tester.pumpWidget(ProviderScope(
-      overrides: mockRepositoryOverrides(loans: _CleanLoanRepository()),
+      overrides: mockRepositoryOverrides(loans: loans),
       child: MaterialApp(
         theme: buildSmartLibTheme(),
         home: const BookDetailScreen(bookId: 'b1'),
@@ -78,6 +86,7 @@ void main() {
     await tester.tap(find.text('Borrow this copy'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Borrowed'), findsOneWidget);
+    expect(loans.createdFor, ['b1']);
   });
 
   testWidgets('an unavailable book shows the waitlist copy and Join Waitlist button', (tester) async {

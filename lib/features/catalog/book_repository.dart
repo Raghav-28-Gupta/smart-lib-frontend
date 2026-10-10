@@ -1,4 +1,7 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api_client.dart';
+import '../../core/api_exception.dart';
 import '../../models/book.dart';
 
 const kGenres = [
@@ -14,11 +17,49 @@ const kGenres = [
   'Non-fiction',
 ];
 
+// No borrow() here: borrowing creates a loan, which LoanRepository.createLoan
+// owns. Having both made the detail screen call POST /loans twice.
 abstract class BookRepository {
   Future<List<Book>> search({String query = '', String genre = 'All'});
+
+  /// Null when no such book exists.
   Future<Book?> getById(String id);
-  Future<void> borrow(String id);
+
   Future<void> joinWaitlist(String id);
+}
+
+class HttpBookRepository implements BookRepository {
+  HttpBookRepository(this._dio);
+
+  final Dio _dio;
+
+  @override
+  Future<List<Book>> search({String query = '', String genre = 'All'}) async {
+    final q = query.trim();
+    final res = await guardApi(() => _dio.get<List<dynamic>>('/books/search', queryParameters: {
+          if (q.isNotEmpty) 'q': q,
+          if (genre != 'All') 'genre': genre,
+        }));
+    return res.data!.map((j) => Book.fromJson(j as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Book?> getById(String id) async {
+    try {
+      final res = await guardApi(() => _dio.get<Map<String, dynamic>>('/books/${Uri.encodeComponent(id)}'));
+      return Book.fromJson(res.data!);
+    } on ApiException catch (e) {
+      // The detail screen has a "no such book" state for null; anything else
+      // propagates so the screen can offer Retry.
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> joinWaitlist(String id) async {
+    await guardApi(() => _dio.post<Object?>('/reservations', data: {'bookId': id}));
+  }
 }
 
 const _seedBooks = [
@@ -168,16 +209,6 @@ class MockBookRepository implements BookRepository {
   }
 
   @override
-  Future<void> borrow(String id) async {
-    final index = _books.indexWhere((b) => b.id == id);
-    if (index == -1) return;
-    final b = _books[index];
-    _books[index] = b.copyWith(
-        availableCopies:
-            (b.availableCopies - 1).clamp(0, b.totalCopies).toInt());
-  }
-
-  @override
   Future<void> joinWaitlist(String id) async {
     final index = _books.indexWhere((b) => b.id == id);
     if (index == -1) return;
@@ -186,5 +217,4 @@ class MockBookRepository implements BookRepository {
   }
 }
 
-final bookRepositoryProvider =
-    Provider<BookRepository>((ref) => MockBookRepository());
+final bookRepositoryProvider = Provider<BookRepository>((ref) => HttpBookRepository(ref.watch(apiClientProvider)));
