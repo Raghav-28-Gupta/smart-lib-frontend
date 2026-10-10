@@ -6,8 +6,12 @@ import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
 import 'package:smartlib_frontend/features/catalog/book_detail_screen.dart';
+import 'package:smartlib_frontend/features/catalog/book_repository.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
+import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
+import 'package:smartlib_frontend/models/book.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import 'package:smartlib_frontend/models/reservation.dart';
 import '../../support/mock_overrides.dart';
 
 class _CleanLoanRepository implements LoanRepository {
@@ -60,6 +64,14 @@ class _CleanLoanRepository implements LoanRepository {
     _loans.insert(0, loan);
     return loan;
   }
+}
+
+/// b9 with its one shelf copy held for a student on the waitlist.
+class _HeldCopyBookRepository extends MockBookRepository {
+  @override
+  Future<Book?> getById(String id) async => const Book(
+      id: 'b9', title: 'The Midnight Library', author: 'Matt Haig', genre: 'Fiction', description: 'd',
+      totalCopies: 2, availableCopies: 1, heldCopies: 1, waitlistCount: 0);
 }
 
 void main() {
@@ -118,5 +130,77 @@ void main() {
     expect(find.text('No available copies right now.'), findsOneWidget);
     expect(find.textContaining('Borrowed'), findsNothing);
     await tester.pump(const Duration(seconds: 3));
+  });
+
+  group('the waitlist', () {
+    testWidgets('after joining, the screen shows your place in line -- and still does when you come back', (tester) async {
+      // It used to forget as soon as you left the screen, and offer Join again.
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: _CleanLoanRepository()));
+      addTearDown(container.dispose);
+      Widget app(Widget home) => UncontrolledProviderScope(
+          container: container, child: MaterialApp(theme: buildSmartLibTheme(), home: home));
+
+      await tester.pumpWidget(app(const BookDetailScreen(bookId: 'b2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Join Waitlist'));
+      await tester.pumpAndSettle();
+      // b2 already has two students queued.
+      expect(find.text("You're #3 in line."), findsOneWidget);
+
+      await tester.pumpWidget(app(const SizedBox()));
+      await tester.pumpWidget(app(const BookDetailScreen(bookId: 'b2')));
+      await tester.pumpAndSettle();
+      expect(find.text("You're #3 in line."), findsOneWidget);
+      expect(find.text('Join Waitlist'), findsNothing);
+    });
+
+    testWidgets('Leave waitlist takes you out of the queue', (tester) async {
+      final waitlist = MockWaitlistRepository(MockBookRepository(), reservations: const [
+        Reservation(id: 'res-b2', bookId: 'b2', status: ReservationStatus.waiting, queuePosition: 3),
+      ]);
+      await tester.pumpWidget(ProviderScope(
+        overrides: mockRepositoryOverrides(loans: _CleanLoanRepository(), waitlist: waitlist),
+        child: MaterialApp(theme: buildSmartLibTheme(), builder: withToasts, home: const BookDetailScreen(bookId: 'b2')),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Leave waitlist'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("You've left the waitlist."), findsOneWidget);
+      expect(find.text('Join Waitlist'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a copy held for you says until when, and Borrow claims it', (tester) async {
+      // Nobody else can borrow it, so it's the one case where Borrow shows
+      // even though the shelf copy is held.
+      final waitlist = MockWaitlistRepository(MockBookRepository(), reservations: [
+        Reservation(id: 'res-b9', bookId: 'b9', status: ReservationStatus.held, claimExpiresAt: DateTime.now().add(const Duration(hours: 30))),
+      ]);
+      await tester.pumpWidget(ProviderScope(
+        overrides: mockRepositoryOverrides(loans: _CleanLoanRepository(), books: _HeldCopyBookRepository(), waitlist: waitlist),
+        child: MaterialApp(theme: buildSmartLibTheme(), home: const BookDetailScreen(bookId: 'b9')),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('A copy is held for you until'), findsOneWidget);
+      expect(find.text('Join Waitlist'), findsNothing);
+
+      await tester.tap(find.text('Borrow this copy'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Borrowed'), findsOneWidget);
+    });
+
+    testWidgets("copies held for other students aren't offered -- it's Join Waitlist instead", (tester) async {
+      // The server refuses anyone but the claimant, so a Borrow button here
+      // could only ever fail.
+      await tester.pumpWidget(ProviderScope(
+        overrides: mockRepositoryOverrides(loans: _CleanLoanRepository(), books: _HeldCopyBookRepository()),
+        child: MaterialApp(theme: buildSmartLibTheme(), home: const BookDetailScreen(bookId: 'b9')),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Borrow this copy'), findsNothing);
+      expect(find.text('Every copy on the shelf is held for a student on the waitlist.'), findsOneWidget);
+      expect(find.text('Join Waitlist'), findsOneWidget);
+    });
   });
 }

@@ -1,0 +1,9 @@
+{
+  "id": "f8a978ad-3030-4df8-897c-969c50b17b75",
+  "userId": "u1",
+  "bookId": "b9",
+  "requestedAt": "2026-10-10T15:16:31.869Z",
+  "status": "waiting",
+  "claimExpiresAt": null,
+  "queuePosition": 1
+}

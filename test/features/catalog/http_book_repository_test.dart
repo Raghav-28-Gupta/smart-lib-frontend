@@ -60,22 +60,4 @@ void main() {
       await expectLater(books.getById('b1'), throwsA(isA<ApiException>()));
     });
   });
-
-  group('joinWaitlist', () {
-    test('creates a reservation for the book', () async {
-      final (books, stub) = repo((_) => const StubResponse(201, {'id': 'res1', 'status': 'waiting'}));
-      await books.joinWaitlist('b2');
-      expect(stub.requests.single.method, 'POST');
-      expect(stub.requests.single.path, '/reservations');
-      expect(stub.requests.single.data, {'bookId': 'b2'});
-    });
-
-    test('surfaces the server\'s reason when it refuses', () async {
-      final (books, _) = repo((_) => const StubResponse(409, {'error': "You're already on the waitlist for this title."}));
-      await expectLater(
-        books.joinWaitlist('b2'),
-        throwsA(isA<ConflictException>().having((e) => e.message, 'message', "You're already on the waitlist for this title.")),
-      );
-    });
-  });
 }

@@ -6,7 +6,7 @@
 // reads the real platform keystore through the token store.
 //
 // Apply `mockRepositoryOverrides()` to every container in a test instead: it
-// pins all six repositories to the `Mock*` test doubles and the token store
+// pins all seven repositories to the `Mock*` test doubles and the token store
 // to memory. A function (not a const list) because each container needs its
 // own fresh Mock instances -- sharing one across tests would leak state
 // between them.
@@ -17,9 +17,10 @@ import 'package:smartlib_frontend/features/catalog/book_repository.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/profile/profile_repository.dart';
 import 'package:smartlib_frontend/features/recommendations/recommendation_repository.dart';
+import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
 import 'fake_token_store.dart';
 
-/// Overrides all six repository providers to (fresh, by default) mocks, and
+/// Overrides all seven repository providers to (fresh, by default) mocks, and
 /// the token store to in-memory persistence -- so no test reaches the network
 /// or a real platform keystore.
 ///
@@ -40,6 +41,7 @@ mockRepositoryOverrides({
   BookingRepository? bookings,
   ProfileRepository? profile,
   RecommendationRepository? recommendations,
+  WaitlistRepository? waitlist,
   TokenStore? tokens,
 }) {
   return [
@@ -54,6 +56,11 @@ mockRepositoryOverrides({
     // that same books override, not a disconnected fresh one.
     recommendationRepositoryProvider.overrideWith(
       (ref) => recommendations ?? MockRecommendationRepository(ref.watch(bookRepositoryProvider)),
+    ),
+    // Wired to the same books override, so a join's place in line follows
+    // that book's waitlist count.
+    waitlistRepositoryProvider.overrideWith(
+      (ref) => waitlist ?? MockWaitlistRepository(ref.watch(bookRepositoryProvider)),
     ),
     tokenStoreProvider.overrideWith((ref) {
       // A store passed in belongs to the test (which may pre-seed or inspect

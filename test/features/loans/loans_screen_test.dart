@@ -8,7 +8,10 @@ import 'package:smartlib_frontend/core/ui/confirm_dialog.dart';
 import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/loans/loans_screen.dart';
+import 'package:smartlib_frontend/features/catalog/book_repository.dart';
+import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import 'package:smartlib_frontend/models/reservation.dart';
 import '../../support/mock_overrides.dart';
 
 class _RefusingLoanRepository extends MockLoanRepository {
@@ -74,5 +77,25 @@ void main() {
     await tester.pump();
     expect(find.text('1 student is waiting for this title.'), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('My Loans lists your waitlist: a held copy with its deadline, and your place in line', (tester) async {
+    // A held copy is released to the next student after 48 hours, so it has
+    // to be somewhere the student will see it.
+    final waitlist = MockWaitlistRepository(MockBookRepository(), reservations: [
+      Reservation(id: 'res-b9', bookId: 'b9', status: ReservationStatus.held, claimExpiresAt: DateTime.now().add(const Duration(hours: 30))),
+      const Reservation(id: 'res-b2', bookId: 'b2', status: ReservationStatus.waiting, queuePosition: 3),
+    ]);
+    await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(waitlist: waitlist),
+      child: MaterialApp(theme: buildSmartLibTheme(), home: const LoansScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waitlist'), findsOneWidget);
+    expect(find.text('The Midnight Library'), findsOneWidget);
+    expect(find.textContaining('Held for you until'), findsOneWidget);
+    expect(find.text('Operating System Concepts'), findsOneWidget);
+    expect(find.text('#3 in line'), findsOneWidget);
   });
 }

@@ -18,14 +18,13 @@ const kGenres = [
 ];
 
 // No borrow() here: borrowing creates a loan, which LoanRepository.createLoan
-// owns. Having both made the detail screen call POST /loans twice.
+// owns. Having both made the detail screen call POST /loans twice. Likewise,
+// joining the waitlist belongs to WaitlistRepository.
 abstract class BookRepository {
   Future<List<Book>> search({String query = '', String genre = 'All'});
 
   /// Null when no such book exists.
   Future<Book?> getById(String id);
-
-  Future<void> joinWaitlist(String id);
 }
 
 class HttpBookRepository implements BookRepository {
@@ -54,11 +53,6 @@ class HttpBookRepository implements BookRepository {
       if (e.statusCode == 404) return null;
       rethrow;
     }
-  }
-
-  @override
-  Future<void> joinWaitlist(String id) async {
-    await guardApi(() => _dio.post<Object?>('/reservations', data: {'bookId': id}));
   }
 }
 
@@ -206,14 +200,6 @@ class MockBookRepository implements BookRepository {
       if (b.id == id) return b;
     }
     return null;
-  }
-
-  @override
-  Future<void> joinWaitlist(String id) async {
-    final index = _books.indexWhere((b) => b.id == id);
-    if (index == -1) return;
-    final b = _books[index];
-    _books[index] = b.copyWith(waitlistCount: b.waitlistCount + 1);
   }
 }
 

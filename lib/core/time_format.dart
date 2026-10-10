@@ -19,3 +19,17 @@ String timeRangeLabel(DateTime start, DateTime end) {
   final sameMeridiem = (start.hour < 12) == (end.hour < 12);
   return sameMeridiem ? '${from.substring(0, from.length - 3)} – $to' : '$from – $to';
 }
+
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// 'today, 3:00 PM', 'tomorrow, 9:00 AM', or 'Mon, 8:45 PM' further out --
+/// for deadlines a day or two away, like a held copy's. Expects local times.
+String dayTimeLabel(DateTime t, {required DateTime now}) {
+  final days = DateTime(t.year, t.month, t.day).difference(DateTime(now.year, now.month, now.day)).inDays;
+  final day = switch (days) {
+    0 => 'today',
+    1 => 'tomorrow',
+    _ => _weekdays[t.weekday - 1],
+  };
+  return '$day, ${clockLabel(t)}';
+}

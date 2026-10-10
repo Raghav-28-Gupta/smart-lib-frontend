@@ -14,5 +14,6 @@ Book _$BookFromJson(Map<String, dynamic> json) => Book(
       description: json['description'] as String? ?? '',
       totalCopies: (json['totalCopies'] as num).toInt(),
       availableCopies: (json['availableCopies'] as num).toInt(),
+      heldCopies: (json['heldCopies'] as num?)?.toInt() ?? 0,
       waitlistCount: (json['waitlistCount'] as num).toInt(),
     );

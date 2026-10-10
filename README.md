@@ -159,28 +159,32 @@ when you're done, because the steps change the demo data.
 | 6 | Search for a title, open a book with copies available, **Borrow this copy** | Button becomes *Borrowed — see My Loans…*; available count drops; the loan appears in My Loans | ☐ | ☐ | ☐ |
 | 7 | **Renew** a renewable loan | *Renewed — now due …* | ☐ | ☐ | ☐ |
 | 8 | **Return** a loan → confirm | Toast *Returned.*; the loan leaves the list | ☐ | ☐ | ☐ |
-| 9 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
-| 10 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
-| 11 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In** | *Enjoy your session.* | ☐ | ☐ | ☐ |
-| 12 | **Cancel** a booking → confirm | Toast *Booking canceled.*; it leaves the list | ☐ | ☐ | ☐ |
-| 13 | Profile | Reliability ring at 50, *Building back up*; **How reliability works** opens a dialog | ☐ | ☐ | ☐ |
-| 14 | Home → Recommended for You → See all | A list of books | ☐ | ☐ | ☐ |
-| 15 | **Relaunch** (web: reload the page; Windows: close the window and run again; Android: swipe it away from Recents and reopen) | Splash, then Home, **without logging in** | ☐ | ☐ | ☐ |
-| 16 | **Expired session**: restart the backend with a throwaway secret (below), then type in Search | Back on Log in with *Your session has expired. Please log in again.* | ☐ | ☐ | ☐ |
-| 17 | Restart the backend normally and log in again | Home | ☐ | ☐ | ☐ |
+| 9 | Open *Operating System Concepts* (no copies free) → **Join Waitlist**; go back, then open it again | *You're #3 in line.* is still there; My Loans lists it under **Waitlist** | ☐ | ☐ | ☐ |
+| 10 | On that book, **Leave waitlist** | Toast *You've left the waitlist.*; *Join Waitlist* is back | ☐ | ☐ | ☐ |
+| 11 | **Held copy**: on another client, log in as `seed.student1@thapar.edu` (same password) and borrow *The Midnight Library*. As Aditi, join its waitlist. Then return it as the other student | Aditi's My Loans shows *Held for you until …* and the book offers **Borrow this copy**; the other student sees *Every copy on the shelf is held for a student on the waitlist.* | ☐ | ☐ | ☐ |
+| 12 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
+| 13 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
+| 14 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In** | *Enjoy your session.* | ☐ | ☐ | ☐ |
+| 15 | **Cancel** a booking → confirm | Toast *Booking canceled.*; it leaves the list | ☐ | ☐ | ☐ |
+| 16 | Profile | Reliability ring at 50, *Building back up*; **How reliability works** opens a dialog | ☐ | ☐ | ☐ |
+| 17 | Home → Recommended for You → See all | A list of books | ☐ | ☐ | ☐ |
+| 18 | **Relaunch** (web: reload the page; Windows: close the window and run again; Android: swipe it away from Recents and reopen) | Splash, then Home, **without logging in** | ☐ | ☐ | ☐ |
+| 19 | **Expired session**: restart the backend with a throwaway secret (below), then type in Search | Back on Log in with *Your session has expired. Please log in again.* | ☐ | ☐ | ☐ |
+| 20 | Restart the backend normally and log in again | Home | ☐ | ☐ | ☐ |
 
-**Step 10 needs two clients.** The picker greys out slots that are already
-taken, so a conflict only happens when someone else books the slot while
-you're on the confirm screen. A second browser tab works for this.
+**Steps 11 and 13 need two clients.** A held copy needs a second student
+to return a book you're queued for. And the picker greys out slots that are
+already taken, so a conflict only happens when someone else books the slot
+while you're on the confirm screen. A second browser tab works for both.
 
-**Step 16** invalidates every issued token without touching any file. The
+**Step 19** invalidates every issued token without touching any file. The
 backend loads `.env` with `dotenv`, which never overrides a variable that's
 already set:
 
 ```powershell
 # in backend/, after stopping the running server
 $env:JWT_SECRET = 'acceptance-throwaway'; npm run dev
-# step 17: stop it, then
+# step 20: stop it, then
 Remove-Item Env:JWT_SECRET; npm run dev
 ```
 
@@ -205,7 +209,8 @@ lib/
 ├── widgets/                   # shared widgets (covers, skeletons, empty/error states)
 └── features/
     ├── auth/                  # login/register, session restore, splash
-    ├── catalog/               # search, book detail, borrow, waitlist
+    ├── catalog/               # search, book detail, borrow
+    ├── waitlist/              # join/leave, place in line, copies held for you
     ├── loans/                 # active loans, renew, return
     ├── bookings/              # booking flow, conflicts, check-in, time slots
     ├── profile/               # reliability
@@ -223,10 +228,9 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
 
 ## Known limitations
 
-- **Waitlist status isn't remembered.** After joining, the book screen says so,
-  but leaving and reopening it offers *Join Waitlist* again. The app doesn't yet
-  fetch the student's reservations. Joining twice is refused by the server, with
-  its reason shown.
+- **No notifications.** When a copy comes back for you, it's held for 48 hours.
+  The app shows the hold in My Loans and on the book, but nothing tells you
+  while the app is closed. The backend has no notification channel yet.
 - **Search sends a request on every keystroke**, with no debounce.
 - **The app is student-only.** It receives the user's `role`, but librarian
   tools are planned as a separate web console.

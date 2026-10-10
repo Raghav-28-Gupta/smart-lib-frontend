@@ -67,6 +67,10 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   reloads the list on `meansStaleState` (409/404) but keeps it on network
   errors. Guard against double taps for non-idempotent actions (see
   `LoansController._renewing`, `BookingFlowController._confirming`).
+- **Availability: use `Book.freeCopies`, not `availableCopies`.** A copy held
+  for a waitlisted student's claim (`heldCopies`) is on the shelf but refused
+  to everyone else. The one exception is the claimant: when the student's own
+  `Reservation` is `held`, offer Borrow.
 - **Per-user state is keyed on the user.** Controllers holding a user's data
   `watch` `authControllerProvider.select((s) => s.user?.id)`, so logging in as
   someone else refetches instead of showing the previous user's data.
@@ -135,7 +139,7 @@ lib/
 │   └── ui/                    # UiController, confirm dialogs, toasts
 ├── models/                    # json_serializable models + *.g.dart
 ├── widgets/                   # shared widgets
-└── features/                  # auth, catalog, loans, bookings, profile,
+└── features/                  # auth, catalog, loans, bookings, waitlist, profile,
                                # recommendations, home, health (unrouted, Phase 1)
 test/
 ├── support/                   # mock_overrides, fixtures, stub_http_adapter, fake_token_store

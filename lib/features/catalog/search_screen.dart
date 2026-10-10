@@ -92,8 +92,8 @@ class SearchScreen extends ConsumerWidget {
                         itemCount: books.length,
                         itemBuilder: (context, i) {
                           final b = books[i];
-                          final availLabel = b.availableCopies > 0
-                              ? '${b.availableCopies} available'
+                          final availLabel = b.freeCopies > 0
+                              ? '${b.freeCopies} available'
                               : (b.waitlistCount > 0
                                   ? '${b.waitlistCount} waiting'
                                   : 'Join waitlist');

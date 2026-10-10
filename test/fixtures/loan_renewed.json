@@ -1,9 +1,9 @@
 {
-  "id": "8279bc8a-d63f-465f-9fd9-1bd39687afc4",
+  "id": "78338b4e-6600-4a9f-a81a-86f53e8aa24d",
   "userId": "u1",
   "bookId": "b1",
-  "borrowedAt": "2026-09-24T11:54:19.390Z",
-  "dueAt": "2026-10-14T11:56:02.062Z",
+  "borrowedAt": "2026-10-04T15:15:59.890Z",
+  "dueAt": "2026-10-24T15:16:28.498Z",
   "returnedAt": null,
   "renewedCount": 1,
   "status": "active",

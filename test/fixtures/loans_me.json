@@ -1,10 +1,10 @@
 [
   {
-    "id": "1df1ff88-e531-40dd-8122-036ffecb6cc7",
+    "id": "3f64db85-85b3-44b2-8a7d-f0cbe687ee4a",
     "userId": "u1",
     "bookId": "b4",
-    "borrowedAt": "2026-09-13T11:54:21.393Z",
-    "dueAt": "2026-09-27T11:54:21.393Z",
+    "borrowedAt": "2026-09-23T15:16:02.004Z",
+    "dueAt": "2026-10-07T15:16:02.004Z",
     "returnedAt": null,
     "renewedCount": 0,
     "status": "active",
@@ -14,11 +14,11 @@
     "blockedReason": null
   },
   {
-    "id": "b0e740c1-4ab2-4eb7-a947-93b7cd906c8f",
+    "id": "a77b71b0-b257-4cd2-895a-0b28c8eff217",
     "userId": "u1",
     "bookId": "b3",
-    "borrowedAt": "2026-09-18T11:54:20.633Z",
-    "dueAt": "2026-10-02T11:54:20.633Z",
+    "borrowedAt": "2026-09-28T15:16:01.249Z",
+    "dueAt": "2026-10-12T15:16:01.249Z",
     "returnedAt": null,
     "renewedCount": 0,
     "status": "active",
@@ -28,11 +28,11 @@
     "blockedReason": null
   },
   {
-    "id": "fc7a59c9-466e-4529-b164-8c9d86731974",
+    "id": "5a1a574a-335e-49c6-842d-9bfa6a3715f2",
     "userId": "u1",
     "bookId": "b8",
-    "borrowedAt": "2026-09-21T11:54:23.333Z",
-    "dueAt": "2026-10-05T11:54:23.333Z",
+    "borrowedAt": "2026-10-01T15:16:04.076Z",
+    "dueAt": "2026-10-15T15:16:04.076Z",
     "returnedAt": null,
     "renewedCount": 0,
     "status": "active",
@@ -42,11 +42,11 @@
     "blockedReason": "1 student is waiting for this title."
   },
   {
-    "id": "8279bc8a-d63f-465f-9fd9-1bd39687afc4",
+    "id": "78338b4e-6600-4a9f-a81a-86f53e8aa24d",
     "userId": "u1",
     "bookId": "b1",
-    "borrowedAt": "2026-09-24T11:54:19.390Z",
-    "dueAt": "2026-10-08T11:54:19.390Z",
+    "borrowedAt": "2026-10-04T15:15:59.890Z",
+    "dueAt": "2026-10-18T15:15:59.890Z",
     "returnedAt": null,
     "renewedCount": 0,
     "status": "active",

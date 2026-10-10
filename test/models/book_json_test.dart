@@ -16,7 +16,15 @@ void main() {
     expect(book.description, startsWith('The standard reference'));
     expect(book.totalCopies, 4);
     expect(book.availableCopies, 1);
+    expect(book.heldCopies, 0);
     expect(book.waitlistCount, 0);
+  });
+
+  test('parses heldCopies -- a copy held for a waitlisted student is not free to borrow', () {
+    final book = Book.fromJson(fixture('book_held') as Map<String, dynamic>);
+    expect(book.availableCopies, 1);
+    expect(book.heldCopies, 1);
+    expect(book.freeCopies, 0);
   });
 
   test('parses every book in GET /books/search', () {
@@ -47,6 +55,9 @@ void main() {
     });
     expect(book.genre, '');
     expect(book.description, '');
+    // An older server without heldCopies: nothing is held.
+    expect(book.heldCopies, 0);
+    expect(book.freeCopies, 1);
   });
 
   group('coverPalette', () {

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "f8a978ad-3030-4df8-897c-969c50b17b75",
+    "userId": "u1",
+    "bookId": "b9",
+    "requestedAt": "2026-10-10T15:16:31.869Z",
+    "status": "fulfilled",
+    "claimExpiresAt": "2026-10-12T15:16:32.615Z",
+    "queuePosition": null
+  },
+  {
+    "id": "d5f6823a-711c-458f-850e-14f2dffd5e16",
+    "userId": "u1",
+    "bookId": "b2",
+    "requestedAt": "2026-10-10T15:16:33.642Z",
+    "status": "waiting",
+    "claimExpiresAt": null,
+    "queuePosition": 3
+  }
+]

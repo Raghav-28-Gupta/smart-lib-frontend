@@ -33,4 +33,19 @@ void main() {
       expect(timeRangeLabel(DateTime(2026, 9, 30, 17, 23), DateTime(2026, 9, 30, 18, 23)), '5:23 – 6:23 PM');
     });
   });
+
+  group('dayTimeLabel', () {
+    // Saturday evening.
+    final now = DateTime(2026, 10, 10, 20, 30);
+
+    test('says today or tomorrow when it is', () {
+      expect(dayTimeLabel(DateTime(2026, 10, 10, 22), now: now), 'today, 10:00 PM');
+      expect(dayTimeLabel(DateTime(2026, 10, 11, 9), now: now), 'tomorrow, 9:00 AM');
+    });
+
+    test('names the weekday further out', () {
+      // A held copy lasts 48 hours, so it can end two days away.
+      expect(dayTimeLabel(DateTime(2026, 10, 12, 20, 45), now: now), 'Mon, 8:45 PM');
+    });
+  });
 }

@@ -8,3 +8,7 @@
 /// booking in India displays as 11:30 AM. Converting once, at the parse
 /// boundary, means no screen has to remember to.
 DateTime localDateTime(String value) => DateTime.parse(value).toLocal();
+
+/// [localDateTime] for a field the backend sends as null when it's unset.
+/// json_serializable doesn't add the null check for a custom converter.
+DateTime? localDateTimeOrNull(String? value) => value == null ? null : localDateTime(value);

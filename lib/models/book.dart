@@ -13,6 +13,7 @@ class Book {
     required this.description,
     required this.totalCopies,
     required this.availableCopies,
+    this.heldCopies = 0,
     required this.waitlistCount,
   });
 
@@ -32,7 +33,16 @@ class Book {
 
   final int totalCopies;
   final int availableCopies;
+
+  /// Of [availableCopies], how many are held for a waitlisted student's
+  /// claim. They're on the shelf, but only that student can borrow them.
+  @JsonKey(defaultValue: 0)
+  final int heldCopies;
+
   final int waitlistCount;
+
+  /// Copies anyone may borrow right now.
+  int get freeCopies => (availableCopies - heldCopies).clamp(0, availableCopies);
 
   /// UI-only -- the backend has no palette. Derived from the id so a given
   /// book always gets the same cover everywhere. Deliberately a code-unit
@@ -45,7 +55,7 @@ class Book {
 
   String get initial => title.isNotEmpty ? title[0].toUpperCase() : '?';
 
-  Book copyWith({int? availableCopies, int? waitlistCount}) => Book(
+  Book copyWith({int? availableCopies, int? heldCopies, int? waitlistCount}) => Book(
         id: id,
         title: title,
         author: author,
@@ -53,6 +63,7 @@ class Book {
         description: description,
         totalCopies: totalCopies,
         availableCopies: availableCopies ?? this.availableCopies,
+        heldCopies: heldCopies ?? this.heldCopies,
         waitlistCount: waitlistCount ?? this.waitlistCount,
       );
 }

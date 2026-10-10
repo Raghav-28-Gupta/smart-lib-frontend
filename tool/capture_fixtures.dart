@@ -137,6 +137,27 @@ Future<void> main() async {
   await _save('loan_renewed', 'POST', '/loans/${b1Loan['id']}/renew', expect: 200, token: token);
   await _save('loan_created', 'POST', '/loans', expect: 201, token: token, body: {'bookId': 'b12'});
 
+  // --- Waitlist -----------------------------------------------------------
+  // A held copy needs someone else to return one while Aditi is first in
+  // line: a seeded student borrows b9's last copy, Aditi queues for it, and
+  // the student returns it -- the backend then holds that copy for Aditi.
+  // b2 has no copies free and two students already queued, so she joins
+  // that one third.
+  final student = await _call('POST', '/auth/login',
+      body: {'email': 'seed.student1@thapar.edu', 'password': 'password123'});
+  if (student.status != 200) throw StateError('student login failed: ${student.body}');
+  final studentToken = (student.body! as Map<String, dynamic>)['token'] as String;
+  final studentLoan = await _call('POST', '/loans', token: studentToken, body: {'bookId': 'b9'});
+  if (studentLoan.status != 201) throw StateError('student borrow failed: ${studentLoan.body}');
+  await _save('reservation_created', 'POST', '/reservations', expect: 201, token: token, body: {'bookId': 'b9'});
+  final studentLoanId = (studentLoan.body! as Map<String, dynamic>)['id'];
+  final returned = await _call('POST', '/loans/$studentLoanId/return', token: studentToken);
+  if (returned.status != 200) throw StateError('student return failed: ${returned.body}');
+  final queued = await _call('POST', '/reservations', token: token, body: {'bookId': 'b2'});
+  if (queued.status != 201) throw StateError('joining b2 failed: ${queued.body}');
+  await _save('reservations_me', 'GET', '/reservations/me', expect: 200, token: token);
+  await _save('book_held', 'GET', '/books/b9', expect: 200);
+
   // --- Profile & recommendations (after the check-in, so history carries
   // both an 'ok' and a 'miss') ------------------------------------------
   await _save('profile_reliability', 'GET', '/profile/reliability', expect: 200, token: token);
