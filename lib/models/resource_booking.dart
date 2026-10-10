@@ -11,6 +11,14 @@ part 'resource_booking.g.dart';
 /// window elapsed without check-in) -- it's never persisted.
 enum BookingStatus { upcomingFar, inWindow, checkedIn, released }
 
+/// How long after its start a booking can still be checked into. Mirrors
+/// GRACE_PERIOD_MINUTES in backend/src/config/constants.ts.
+const kCheckInGracePeriod = Duration(minutes: 15);
+
+// Order the time-driven statuses move through. checkedIn is outside it:
+// only a check-in reaches it, never the clock.
+const _progress = [BookingStatus.upcomingFar, BookingStatus.inWindow, BookingStatus.released];
+
 @JsonSerializable(createToJson: false)
 class ResourceBooking {
   const ResourceBooking({
@@ -48,6 +56,34 @@ class ResourceBooking {
   /// can't disagree with them -- and it renders bookings that don't start
   /// on the hour, which a lookup into kTimeSlots could not.
   String get timeSlot => timeRangeLabel(startTime, endTime);
+
+  /// This booking as of [now], computed the way the server computes it at read
+  /// time (bookingService.ts computeWindow): upcoming before the start, then
+  /// a [kCheckInGracePeriod] check-in window, then released.
+  ///
+  /// The bookings list isn't refetched while the app is open, so without
+  /// this a booking made in advance would never become checkable. Grace is
+  /// recomputed from the start time rather than decremented, so a timer that
+  /// stalls in the background can't leave extra time on the clock. And it
+  /// only ever moves forward: if the device clock runs behind the server's,
+  /// a booking the server already opened stays open.
+  ResourceBooking advancedTo(DateTime now) {
+    if (!_progress.contains(status)) return this;
+    final graceEnd = startTime.add(kCheckInGracePeriod);
+    final BookingStatus computed;
+    if (now.isBefore(startTime)) {
+      computed = BookingStatus.upcomingFar;
+    } else if (!now.isAfter(graceEnd)) {
+      computed = BookingStatus.inWindow;
+    } else {
+      computed = BookingStatus.released;
+    }
+    final next = _progress.indexOf(computed) > _progress.indexOf(status) ? computed : status;
+    return copyWith(
+      status: next,
+      graceRemainingSeconds: next == BookingStatus.inWindow ? graceEnd.difference(now).inSeconds.clamp(0, kCheckInGracePeriod.inSeconds) : 0,
+    );
+  }
 
   ResourceBooking copyWith(
           {BookingStatus? status, int? graceRemainingSeconds}) =>

@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/clock.dart';
 import '../../models/resource.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
@@ -37,8 +38,8 @@ class BookingFlowScreen extends ConsumerWidget {
   }
 
   Widget _buildPick(BuildContext context, WidgetRef ref, BookingFlowState flow, BookingFlowController notifier) {
-    final isEmptyCombo = flow.type == ResourceType.room && flow.dateIndex >= 2;
     final resourcesAsync = ref.watch(bookingResourcesProvider);
+    final now = ref.read(clockProvider)();
 
     return Column(children: [
       Padding(
@@ -67,18 +68,13 @@ class BookingFlowScreen extends ConsumerWidget {
             ),
         ]),
       ),
-      Expanded(child: isEmptyCombo
-          ? EmptyState(
-              icon: Icons.event_busy,
-              title: 'No rooms free on this date',
-              body: 'Try another day, or look at individual seats instead.',
-              actionLabel: 'Show Seats',
-              onAction: () => notifier.setType(ResourceType.seat),
-            )
-          : resourcesAsync.when(
+      // Emptiness comes from the server's answer for this type and date. It
+      // used to be hard-coded as "rooms, 2+ days out" -- a rule copied from the
+      // mock repository that would have hidden real rooms forever.
+      Expanded(child: resourcesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, st) => ErrorState(title: "Couldn't load availability", onRetry: () => ref.invalidate(bookingResourcesProvider)),
-              data: (resources) => ListView.builder(
+              data: (resources) => resources.isEmpty ? _noneFree(flow.type, notifier) : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
                 itemCount: resources.length,
                 itemBuilder: (context, i) {
@@ -89,7 +85,7 @@ class BookingFlowScreen extends ConsumerWidget {
                       Text(r.name, style: Theme.of(context).textTheme.titleSmall),
                       Wrap(spacing: 6, runSpacing: 6, children: [
                         for (final slot in kTimeSlots)
-                          if (r.takenSlotsToday.contains(slot))
+                          if (r.takenSlotsToday.contains(slot) || slotHasPassed(flow.dateIndex, slot, now: now))
                             Chip(label: Text(slot), backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest)
                           else
                             ChoiceChip(
@@ -112,6 +108,17 @@ class BookingFlowScreen extends ConsumerWidget {
           ]),
         ),
     ]);
+  }
+
+  Widget _noneFree(ResourceType type, BookingFlowController notifier) {
+    final rooms = type == ResourceType.room;
+    return EmptyState(
+      icon: Icons.event_busy,
+      title: rooms ? 'No rooms free on this date' : 'No seats free on this date',
+      body: rooms ? 'Try another day, or look at individual seats instead.' : 'Try another day, or book a group room instead.',
+      actionLabel: rooms ? 'Show Seats' : 'Show Rooms',
+      onAction: () => notifier.setType(rooms ? ResourceType.seat : ResourceType.room),
+    );
   }
 
   Widget _buildConfirm(BuildContext context, WidgetRef ref, BookingFlowState flow, BookingFlowController notifier) {
@@ -138,7 +145,10 @@ class BookingFlowScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('That slot was just taken', style: Theme.of(context).textTheme.titleMedium),
-          const Text("Someone booked it a moment before you confirmed. Here's what's still open:"),
+          if (flow.conflictAlternatives!.isEmpty)
+            const Text('Nothing similar is free right now. Try another time or day.')
+          else
+            const Text("Someone booked it a moment before you confirmed. Here's what's still open:"),
           const SizedBox(height: 12),
           for (final alt in flow.conflictAlternatives!)
             Card(child: ListTile(

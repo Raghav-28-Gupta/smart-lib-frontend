@@ -48,6 +48,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('New'));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dateChip-1'))); // the scripted conflict is tomorrow
+    await tester.pumpAndSettle();
     await tester.tap(find.text('5:00 PM').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue'));

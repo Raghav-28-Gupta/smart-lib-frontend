@@ -59,4 +59,25 @@ void main() {
       expect(DateTime.parse(iso.end).isAtSameMomentAs(local.end), true);
     });
   });
+
+  group('slotHasPassed', () {
+    // The same rule the backend enforces: a slot is past once its check-in
+    // window (start + 15 min) has closed.
+    final noon = DateTime(2026, 10, 10, 12, 10);
+
+    test('earlier slots today have passed', () {
+      expect(slotHasPassed(0, '9:00 AM', now: noon), true);
+      expect(slotHasPassed(0, '11:00 AM', now: noon), true);
+    });
+
+    test('the current slot stays open while it can still be checked into', () {
+      expect(slotHasPassed(0, '12:00 PM', now: noon), false);
+      expect(slotHasPassed(0, '12:00 PM', now: DateTime(2026, 10, 10, 12, 16)), true);
+    });
+
+    test('later slots today and every slot on later days are open', () {
+      expect(slotHasPassed(0, '1:00 PM', now: noon), false);
+      expect(slotHasPassed(1, '9:00 AM', now: noon), false);
+    });
+  });
 }

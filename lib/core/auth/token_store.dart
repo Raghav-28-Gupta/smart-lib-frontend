@@ -52,6 +52,7 @@ class TokenStore extends ChangeNotifier {
 
   final TokenPersistence _persistence;
   String? _token;
+  bool _disposed = false;
 
   /// Synchronous on purpose -- read on every outgoing request.
   String? get token => _token;
@@ -65,13 +66,13 @@ class TokenStore extends ChangeNotifier {
       debugPrint('TokenStore: could not read the persisted token: $e');
       _token = null;
     }
-    notifyListeners();
+    _notify();
     return _token;
   }
 
   Future<void> save(String token) async {
     _token = token;
-    notifyListeners();
+    _notify();
     try {
       await _persistence.write(token);
     } catch (e) {
@@ -81,12 +82,25 @@ class TokenStore extends ChangeNotifier {
 
   Future<void> clear() async {
     _token = null;
-    notifyListeners();
+    _notify();
     try {
       await _persistence.delete();
     } catch (e) {
       debugPrint('TokenStore: could not delete the persisted token: $e');
     }
+  }
+
+  // Every operation awaits storage, and the store can be disposed during that
+  // await (app shutdown mid-restore); notifying a disposed ChangeNotifier
+  // throws.
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
 

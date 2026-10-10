@@ -2,31 +2,32 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/resource_booking.dart';
+import '../auth/auth_controller.dart';
 import 'booking_repository.dart';
 
 class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
-  Timer? _timer;
-
   @override
-  Future<List<ResourceBooking>> build() async {
-    final bookings = await ref.read(bookingRepositoryProvider).myBookings();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
-    ref.onDispose(() => _timer?.cancel());
-    return bookings;
+  Future<List<ResourceBooking>> build() {
+    // Outlives a logout, so keyed on who is logged in -- a different user
+    // means a fresh fetch, never the previous user's bookings.
+    ref.watch(authControllerProvider.select((s) => s.user?.id));
+    // Started and cancel-registered before any await, so each build owns
+    // exactly one timer -- a build superseded mid-fetch can't leak one.
+    final timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    ref.onDispose(timer.cancel);
+    return ref.read(bookingRepositoryProvider).myBookings();
   }
 
+  // Recomputes every booking's status from its start time each second, so an
+  // upcoming booking opens for check-in on time and an unclaimed one releases
+  // -- without refetching.
   void _tick() {
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncValue.data([
-      for (final b in current)
-        if (b.status == BookingStatus.inWindow && b.graceRemainingSeconds > 1)
-          b.copyWith(graceRemainingSeconds: b.graceRemainingSeconds - 1)
-        else if (b.status == BookingStatus.inWindow)
-          b.copyWith(status: BookingStatus.released, graceRemainingSeconds: 0)
-        else
-          b,
-    ]);
+    // Not while (re)loading: that would replace the pending fetch with the
+    // previous list.
+    if (state.isLoading || !state.hasValue) return;
+    final current = state.requireValue;
+    final now = DateTime.now();
+    state = AsyncValue.data([for (final b in current) b.advancedTo(now)]);
   }
 
   Future<void> checkIn(String id) async {

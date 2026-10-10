@@ -1,9 +1,20 @@
 // test/features/bookings/bookings_controller_test.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smartlib_frontend/features/auth/auth_controller.dart';
+import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
 import 'package:smartlib_frontend/features/bookings/bookings_controller.dart';
 import 'package:smartlib_frontend/models/resource_booking.dart';
 import '../../support/mock_overrides.dart';
+
+class _CountingBookingRepository extends MockBookingRepository {
+  int fetches = 0;
+  @override
+  Future<List<ResourceBooking>> myBookings() async {
+    fetches++;
+    return super.myBookings();
+  }
+}
 
 void main() {
   test('build() loads the 2 seeded bookings', () async {
@@ -39,5 +50,20 @@ void main() {
     await container.read(bookingsControllerProvider.notifier).cancel('bk1');
     final bookings = container.read(bookingsControllerProvider).value!;
     expect(bookings.any((b) => b.id == 'bk1'), false);
+  });
+
+  test("a different user logging in gets their own bookings, not the last user's", () async {
+    final repo = _CountingBookingRepository();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    final auth = container.read(authControllerProvider.notifier);
+
+    await auth.login('aditi.sharma@thapar.edu', 'anything');
+    await container.read(bookingsControllerProvider.future);
+    await auth.logOut();
+    await auth.register('Second Student', 'second@thapar.edu', 'password123');
+    await container.read(bookingsControllerProvider.future);
+
+    expect(repo.fetches, 2);
   });
 }

@@ -13,7 +13,13 @@ void main() {
     expect(trending.title, 'Trending in the library');
     expect(trending.caption, 'Most borrowed in the last 30 days');
     expect(trending.books, isNotEmpty);
-    expect(trending.books.first.title, 'Database System Concepts');
+    // Not a specific title: books tied on borrow count come back in whatever
+    // order the database returns them, so the ranking's head isn't stable
+    // across captures.
+    for (final book in trending.books) {
+      expect(book.id, isNotEmpty);
+      expect(book.title, isNotEmpty);
+    }
   });
 
   test('parses an empty library, which returns no sections', () {

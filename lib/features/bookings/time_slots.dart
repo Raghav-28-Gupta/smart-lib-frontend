@@ -4,6 +4,8 @@
 // about a slot -- (dateIndex, '5:00 PM') -- and how the API does: a
 // `YYYY-MM-DD` date for availability, and UTC ISO timestamps for bookings.
 
+import '../../models/resource_booking.dart';
+
 /// One-hour slots offered by the booking flow. Mirrors TIME_SLOTS in
 /// backend/src/config/constants.ts -- the availability endpoint reports taken
 /// slots using exactly these labels, so the two lists must not drift.
@@ -43,6 +45,16 @@ String apiDate(int dateIndex, {DateTime? now}) {
 ({String start, String end}) slotWindowIso(int dateIndex, String label, {DateTime? now}) {
   final window = slotWindow(dateIndex, label, now: now);
   return (start: window.start.toUtc().toIso8601String(), end: window.end.toUtc().toIso8601String());
+}
+
+/// Whether slot [label] on day [dateIndex] can no longer be used: its
+/// check-in window (start + [kCheckInGracePeriod]) has closed. The backend
+/// refuses exactly these bookings, so the picker greys them out. The current
+/// slot stays open while it can still be checked into.
+bool slotHasPassed(int dateIndex, String label, {DateTime? now}) {
+  final current = now ?? DateTime.now();
+  final window = slotWindow(dateIndex, label, now: current);
+  return current.isAfter(window.start.add(kCheckInGracePeriod));
 }
 
 // The DateTime constructor normalizes day/month overflow, so this avoids

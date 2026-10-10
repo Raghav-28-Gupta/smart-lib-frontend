@@ -2,9 +2,26 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/bookings/booking_flow_controller.dart';
+import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
 import 'package:smartlib_frontend/features/bookings/bookings_controller.dart';
-import 'package:smartlib_frontend/models/resource.dart';
+import 'package:smartlib_frontend/models/booking_alternative.dart';
+import 'package:smartlib_frontend/models/resource_booking.dart';
 import '../../support/mock_overrides.dart';
+
+/// Refuses the first booking with one alternative, then records every window
+/// it's asked to book.
+class _ConflictOnceRepository extends MockBookingRepository {
+  _ConflictOnceRepository(this.alternative);
+  final BookingAlternative alternative;
+  final requested = <({String resourceId, DateTime start, DateTime end})>[];
+
+  @override
+  Future<ResourceBooking> createBooking({required Resource resource, required DateTime start, required DateTime end}) async {
+    requested.add((resourceId: resource.id, start: start, end: end));
+    if (requested.length == 1) throw BookingConflictException([alternative]);
+    return super.createBooking(resource: resource, start: start, end: end);
+  }
+}
 
 void main() {
   test('confirming a normal slot succeeds and appears in bookingsControllerProvider', () async {
@@ -27,6 +44,7 @@ void main() {
     final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     final notifier = container.read(bookingFlowControllerProvider.notifier);
+    notifier.setDateIndex(1); // the mock's scripted conflict is tomorrow at 5 PM
     notifier.pickSlot(const Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: []), '5:00 PM');
     notifier.goToConfirm();
     await notifier.confirm();
@@ -41,6 +59,7 @@ void main() {
     final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     final notifier = container.read(bookingFlowControllerProvider.notifier);
+    notifier.setDateIndex(1); // the mock's scripted conflict is tomorrow at 5 PM
     notifier.pickSlot(const Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: []), '5:00 PM');
     notifier.goToConfirm();
     await notifier.confirm();
@@ -50,5 +69,57 @@ void main() {
     final state = container.read(bookingFlowControllerProvider);
     expect(state.selectedSlot, alt.timeSlot);
     expect(state.conflictAlternatives, isNull);
+  });
+
+  test("taking an alternative books the server's exact window, not one rebuilt from its label", () async {
+    // Off the hour on purpose: a window rebuilt from the label '6:30 PM' via
+    // the slot table would fail, since no such slot exists.
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final altStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 18, 30);
+    final alt = BookingAlternative(
+      resourceId: 's3', resourceName: 'Silent Zone · Desk 3', resourceType: ResourceType.seat,
+      startTime: altStart, endTime: altStart.add(const Duration(hours: 1)),
+    );
+    final repo = _ConflictOnceRepository(alt);
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    final notifier = container.read(bookingFlowControllerProvider.notifier);
+
+    notifier.setDateIndex(1);
+    notifier.pickSlot(const Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: []), '5:00 PM');
+    notifier.goToConfirm();
+    await notifier.confirm();
+    notifier.pickAlternative(container.read(bookingFlowControllerProvider).conflictAlternatives!.single);
+    await notifier.confirm();
+
+    expect(repo.requested.last.resourceId, 's3');
+    expect(repo.requested.last.start, altStart);
+    expect(repo.requested.last.end, altStart.add(const Duration(hours: 1)));
+    expect(container.read(bookingFlowControllerProvider).result, isNotNull);
+  });
+
+  test("picking a slot after an alternative goes back to the slot's own window", () async {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final altStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 18, 30);
+    final repo = _ConflictOnceRepository(BookingAlternative(
+      resourceId: 's3', resourceName: 'Silent Zone · Desk 3', resourceType: ResourceType.seat,
+      startTime: altStart, endTime: altStart.add(const Duration(hours: 1)),
+    ));
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    final notifier = container.read(bookingFlowControllerProvider.notifier);
+    const desk12 = Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: []);
+
+    notifier.setDateIndex(1);
+    notifier.pickSlot(desk12, '5:00 PM');
+    notifier.goToConfirm();
+    await notifier.confirm();
+    notifier.pickAlternative(container.read(bookingFlowControllerProvider).conflictAlternatives!.single);
+    notifier.backToPicker();
+    notifier.pickSlot(desk12, '9:00 AM');
+    notifier.goToConfirm();
+    await notifier.confirm();
+
+    expect(repo.requested.last.start, DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9));
   });
 }

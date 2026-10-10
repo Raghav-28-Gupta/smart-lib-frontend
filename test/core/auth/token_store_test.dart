@@ -1,4 +1,5 @@
 // test/core/auth/token_store_test.dart
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/auth/token_store.dart';
 import '../../support/fake_token_store.dart';
@@ -12,6 +13,18 @@ class _BrokenPersistence implements TokenPersistence {
   Future<void> write(String token) async => throw Exception('storage unavailable');
   @override
   Future<void> delete() async => throw Exception('storage unavailable');
+}
+
+/// Persistence whose read finishes only when [release] is called.
+class _SlowPersistence extends InMemoryTokenPersistence {
+  _SlowPersistence() : super('jwt');
+  final _gate = Completer<void>();
+  void release() => _gate.complete();
+  @override
+  Future<String?> read() async {
+    await _gate.future;
+    return super.read();
+  }
 }
 
 void main() {
@@ -79,5 +92,16 @@ void main() {
       await store.clear();
       expect(store.token, isNull);
     });
+  });
+
+  test('a restore that finishes after the store is disposed does not throw', () async {
+    // Happens when the app (or a test's container) shuts down while a saved
+    // session is still being read.
+    final persistence = _SlowPersistence();
+    final store = TokenStore(persistence);
+    final restoring = store.restore();
+    store.dispose();
+    persistence.release();
+    await expectLater(restoring, completes);
   });
 }

@@ -12,7 +12,9 @@ void main() {
       theme: buildSmartLibTheme(), home: const BookingsScreen(),
     )));
     await tester.pumpAndSettle();
-    expect(find.textContaining('check-in opens 10 min before'), findsOneWidget);
+    // Check-in opens AT the start time, for 15 minutes (bookingService.ts
+    // computeWindow) -- not before it.
+    expect(find.textContaining('check-in opens at the start time'), findsOneWidget);
     expect(find.textContaining('Check in within'), findsOneWidget);
   });
 }

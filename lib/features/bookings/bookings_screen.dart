@@ -70,7 +70,9 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   Text(b.resourceName, style: Theme.of(context).textTheme.titleSmall),
                   Text(b.timeSlot),
                   if (b.status == BookingStatus.upcomingFar) ...[
-                    Text('Starts ${_startsIn(b.startTime)} · check-in opens 10 min before'),
+                    // Matches the server: check-in opens AT the start time,
+                    // for kCheckInGracePeriod -- not before it.
+                    Text('Starts ${_startsIn(b.startTime)} · check-in opens at the start time'),
                     Row(children: [
                       const Expanded(child: OutlinedButton(onPressed: null, child: Text('Check In'))),
                       const SizedBox(width: 8),

@@ -115,17 +115,19 @@ Future<void> main() async {
   if (inWindow.status != 201) throw StateError('in-window booking failed: ${inWindow.body}');
   await _save('bookings_me', 'GET', '/bookings/me', expect: 200, token: token);
 
-  // r1 (Group Room 201) is seeded as taken at 2 PM and 3 PM today, so this
-  // conflicts -- and yields both alternative kinds: r1 at another hour, and
-  // another room at 2 PM.
-  await _save('booking_conflict_409', 'POST', '/bookings',
-      expect: 409,
-      token: token,
-      body: {
-        'resourceId': 'r1',
-        'startTime': _iso(today.add(const Duration(hours: 14))),
-        'endTime': _iso(today.add(const Duration(hours: 15))),
-      });
+  // A conflict made tomorrow, so it works at any time of day: today's seeded
+  // slots may already be past, and the backend refuses those with a 400
+  // before it ever checks for a clash. Book r1 (Group Room 201) at 2 PM, then
+  // ask for the same slot -- which yields both alternative kinds: r1 at
+  // another hour, and another room at 2 PM.
+  final conflictSlot = {
+    'resourceId': 'r1',
+    'startTime': _iso(tomorrow.add(const Duration(hours: 14))),
+    'endTime': _iso(tomorrow.add(const Duration(hours: 15))),
+  };
+  final holder = await _call('POST', '/bookings', token: token, body: conflictSlot);
+  if (holder.status != 201) throw StateError('holding booking failed: ${holder.body}');
+  await _save('booking_conflict_409', 'POST', '/bookings', expect: 409, token: token, body: conflictSlot);
 
   final inWindowId = (inWindow.body! as Map<String, dynamic>)['id'];
   await _save('booking_checked_in', 'POST', '/bookings/$inWindowId/checkin', expect: 200, token: token);
