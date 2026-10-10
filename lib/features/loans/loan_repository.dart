@@ -1,5 +1,7 @@
 // lib/features/loans/loan_repository.dart
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api_client.dart';
 import '../../models/loan.dart';
 
 abstract class LoanRepository {
@@ -7,6 +9,36 @@ abstract class LoanRepository {
   Future<Loan> renew(String loanId);
   Future<void> returnLoan(String loanId);
   Future<Loan> createLoan(String bookId);
+}
+
+class HttpLoanRepository implements LoanRepository {
+  HttpLoanRepository(this._dio);
+
+  final Dio _dio;
+
+  @override
+  Future<List<Loan>> activeLoans() async {
+    final res = await guardApi(() => _dio.get<List<dynamic>>('/loans/me'));
+    return res.data!.map((j) => Loan.fromJson(j as Map<String, dynamic>)).toList();
+  }
+
+  @override
+  Future<Loan> createLoan(String bookId) async {
+    final res = await guardApi(() => _dio.post<Map<String, dynamic>>('/loans', data: {'bookId': bookId}));
+    return Loan.fromJson(res.data!);
+  }
+
+  @override
+  Future<Loan> renew(String loanId) async {
+    final res = await guardApi(() => _dio.post<Map<String, dynamic>>('/loans/${Uri.encodeComponent(loanId)}/renew'));
+    return Loan.fromJson(res.data!);
+  }
+
+  @override
+  Future<void> returnLoan(String loanId) async {
+    // The response is the returned loan; the list just drops it.
+    await guardApi(() => _dio.post<Object?>('/loans/${Uri.encodeComponent(loanId)}/return'));
+  }
 }
 
 class MockLoanRepository implements LoanRepository {
@@ -30,7 +62,7 @@ class MockLoanRepository implements LoanRepository {
     final index = _loans.indexWhere((l) => l.id == loanId);
     final renewed = _loans[index].copyWith(
       dueDate: DateTime.now().add(const Duration(days: 14)),
-      status: LoanStatus.normal, fineAmount: 0, justRenewed: true,
+      status: LoanStatus.normal, fineAmount: 0,
     );
     _loans[index] = renewed;
     return renewed;
@@ -54,4 +86,4 @@ class MockLoanRepository implements LoanRepository {
   }
 }
 
-final loanRepositoryProvider = Provider<LoanRepository>((ref) => MockLoanRepository());
+final loanRepositoryProvider = Provider<LoanRepository>((ref) => HttpLoanRepository(ref.watch(apiClientProvider)));
