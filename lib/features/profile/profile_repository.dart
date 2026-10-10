@@ -1,16 +1,38 @@
 // lib/features/profile/profile_repository.dart
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api_client.dart';
 import '../../models/profile_reliability.dart';
 import '../auth/auth_controller.dart';
 
 abstract class ProfileRepository {
-  Future<ProfileReliability> reliabilityFor(String userId);
+  /// The logged-in user's reliability. No user id: the server reads it from
+  /// the token, so one user can't ask for another's.
+  Future<ProfileReliability> reliability();
 }
 
-class MockProfileRepository implements ProfileRepository {
+class HttpProfileRepository implements ProfileRepository {
+  HttpProfileRepository(this._dio);
+
+  final Dio _dio;
+
   @override
-  Future<ProfileReliability> reliabilityFor(String userId) async {
-    if (userId == 'u1') {
+  Future<ProfileReliability> reliability() async {
+    final res = await guardApi(() => _dio.get<Map<String, dynamic>>('/profile/reliability'));
+    return ProfileReliability.fromJson(res.data!);
+  }
+}
+
+/// Test double. Defaults to the seeded demo account; [newUser] gives a fresh
+/// account in Good standing instead.
+class MockProfileRepository implements ProfileRepository {
+  MockProfileRepository({this.newUser = false});
+
+  final bool newUser;
+
+  @override
+  Future<ProfileReliability> reliability() async {
+    if (!newUser) {
       return const ProfileReliability(
         tier: 'Building back up',
         ringFraction: 0.5,
@@ -27,10 +49,12 @@ class MockProfileRepository implements ProfileRepository {
   }
 }
 
-final profileRepositoryProvider = Provider<ProfileRepository>((ref) => MockProfileRepository());
+final profileRepositoryProvider = Provider<ProfileRepository>((ref) => HttpProfileRepository(ref.watch(apiClientProvider)));
 
 final profileProvider = FutureProvider.autoDispose<ProfileReliability>((ref) async {
-  final user = ref.watch(authControllerProvider).user;
-  if (user == null) throw StateError('No logged-in user');
-  return ref.watch(profileRepositoryProvider).reliabilityFor(user.id);
+  // Keyed on who is logged in, so a different user never sees this one's
+  // score. Only the id is watched: other auth changes needn't refetch.
+  final userId = ref.watch(authControllerProvider.select((s) => s.user?.id));
+  if (userId == null) throw StateError('No logged-in user');
+  return ref.watch(profileRepositoryProvider).reliability();
 });

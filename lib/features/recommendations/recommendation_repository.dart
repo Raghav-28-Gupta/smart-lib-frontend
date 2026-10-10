@@ -1,11 +1,28 @@
 // lib/features/recommendations/recommendation_repository.dart
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api_client.dart';
 import '../../models/recommendation.dart';
+import '../auth/auth_controller.dart';
 import '../catalog/book_repository.dart';
-import '../loans/loans_controller.dart';
 
 abstract class RecommendationRepository {
-  Future<RecommendationsData> recommendationsFor({required bool hasLoanHistory});
+  /// Recommendations for the logged-in user. The server decides the note and
+  /// sections -- including whether the user has borrowed before -- so the
+  /// client no longer works that out from its own loans list.
+  Future<RecommendationsData> recommendations();
+}
+
+class HttpRecommendationRepository implements RecommendationRepository {
+  HttpRecommendationRepository(this._dio);
+
+  final Dio _dio;
+
+  @override
+  Future<RecommendationsData> recommendations() async {
+    final res = await guardApi(() => _dio.get<Map<String, dynamic>>('/recommendations/me'));
+    return RecommendationsData.fromJson(res.data!);
+  }
 }
 
 const _newSections = [
@@ -18,12 +35,15 @@ const _returningSections = [
   ('Students who read what you did also liked', 'Borrowed by similar readers', ['b12', 'b11']),
 ];
 
+/// Test double. Defaults to a user with loans, like the seeded demo account;
+/// [hasLoanHistory] false gives the first-time-borrower answer instead.
 class MockRecommendationRepository implements RecommendationRepository {
-  MockRecommendationRepository(this._books);
+  MockRecommendationRepository(this._books, {this.hasLoanHistory = true});
   final BookRepository _books;
+  final bool hasLoanHistory;
 
   @override
-  Future<RecommendationsData> recommendationsFor({required bool hasLoanHistory}) async {
+  Future<RecommendationsData> recommendations() async {
     final note = hasLoanHistory ? 'Based on your last few loans.' : "You haven't borrowed anything yet — here's what's popular right now.";
     final sectionSeeds = hasLoanHistory ? _returningSections : _newSections;
     final sections = <RecommendationSection>[];
@@ -35,9 +55,13 @@ class MockRecommendationRepository implements RecommendationRepository {
   }
 }
 
-final recommendationRepositoryProvider = Provider<RecommendationRepository>((ref) => MockRecommendationRepository(ref.watch(bookRepositoryProvider)));
+final recommendationRepositoryProvider =
+    Provider<RecommendationRepository>((ref) => HttpRecommendationRepository(ref.watch(apiClientProvider)));
 
+// No longer watches the loans list: the server computes the note itself, and
+// borrowing refreshes this explicitly (book_detail_screen.dart). Keyed on the
+// user so it never shows one user's picks to the next.
 final recommendationsProvider = FutureProvider.autoDispose((ref) async {
-  final hasHistory = (ref.watch(loansControllerProvider).value ?? []).isNotEmpty;
-  return ref.watch(recommendationRepositoryProvider).recommendationsFor(hasLoanHistory: hasHistory);
+  ref.watch(authControllerProvider.select((s) => s.user?.id));
+  return ref.watch(recommendationRepositoryProvider).recommendations();
 });
