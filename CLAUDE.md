@@ -1,93 +1,155 @@
 # SmartLib — Frontend (Flutter + Riverpod)
 
-The SmartLib frontend is a single multi-platform codebase supporting **Web, Android, and Windows Desktop**. It provides the student and administrator user interfaces for book discovery, lending workflows, waitlist claiming, interactive study seat/room booking, fine monitoring, and personalized AI recommendations.
+The SmartLib student app for **Web, Android, and Windows Desktop**: catalog and
+borrowing, waitlist, loans, seat/room booking with check-in, reliability, and
+recommendations. It talks only to the Node backend (`../backend`, port 3000).
+Librarian/admin tools are a separate planned web console, not part of this app.
 
 ## Tech Stack
-- **Framework**: Flutter (Dart)
-- **State Management**: Flutter Riverpod (`flutter_riverpod: ^3.3.1`)
+- **Framework**: Flutter (Dart) — verified on Flutter 3.47 / Dart 3.13
+- **State**: Riverpod 3 (`flutter_riverpod: ^3.3.1`)
 - **Networking**: Dio (`dio: ^5.0.0`)
 - **Routing**: GoRouter (`go_router: ^17.5.0`)
-- **Typography & Icons**: Google Fonts, Cupertino Icons
+- **Serialization**: `json_serializable` + `build_runner` (generated `*.g.dart` committed)
+- **Session storage**: `flutter_secure_storage`
 
 ---
 
-## Development & Verification Commands
+## Commands
 
-Always run these commands from the `frontend/` directory:
+Always run from `frontend/`:
 
 ```bash
-# Fetch package dependencies
 flutter pub get
-
-# Run on specific platforms
-flutter run -d chrome      # Web (Chrome)
-flutter run -d windows     # Windows desktop
-flutter run -d <device_id> # Connected Android emulator / physical device
-
-# Headless verification (CI / terminal checks)
-flutter analyze            # Static analysis & linting
-flutter test               # Unit and widget tests
-flutter build web          # Production web build validation
+flutter analyze
+flutter test                      # never needs a backend
+flutter build web                 # web compile check
+dart run build_runner build       # after changing any model in lib/models/
+flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
 ```
+
+`build_runner` 2.16+ ignores `--delete-conflicting-outputs`; use the plain command.
 
 ---
 
-## Critical Platform Architecture Rules
+## Critical Platform Rules
 
-### 1. Web-Safe Platform Checks
-**Never import `dart:io` or use `Platform` directly.** `dart:io` does not exist in browser runtimes and will break web compilation.
-Always import `defaultTargetPlatform` and `kIsWeb` from `package:flutter/foundation.dart`:
+1. **Never import `dart:io` / use `Platform`.** It breaks the web build. Use
+   `kIsWeb` and `defaultTargetPlatform` from `package:flutter/foundation.dart`.
+2. **Base URL** (`resolveBaseUrl()` in `lib/core/api_client.dart`): web/Windows
+   → `http://localhost:3000`; Android → `http://10.0.2.2:3000`; override with
+   `--dart-define=SMARTLIB_API_BASE_URL=...`.
+3. **Android cleartext is debug-only** (`android/app/src/debug/AndroidManifest.xml`).
+   Don't move it to the main manifest; release builds need an HTTPS backend.
+4. **Windows builds need the Visual Studio "C++ ATL" component.**
+   `flutter_secure_storage_windows` includes `atlstr.h`.
+5. **Web secure storage works only on HTTPS or localhost.** `TokenStore` degrades
+   to "session not remembered" and must never throw on a storage failure.
 
-```dart
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
-```
+---
 
-### 2. Backend URL Resolution (`lib/core/api_client.dart`)
-The client connects exclusively to the Node.js Core Backend on port 3000:
-- **Web & Windows Desktop**: `http://localhost:3000`
-- **Android Emulator**: `http://10.0.2.2:3000` (emulator host routing alias)
-- **Custom / Physical Device**: Pass via `--dart-define`:
-  ```bash
-  flutter run --dart-define=SMARTLIB_API_BASE_URL=http://192.168.1.50:3000
-  ```
+## Data Layer Conventions
+
+- **Repositories** are `Provider<SomeRepository>` (an interface). Production
+  defaults are the `Http*` implementations; the `Mock*` implementations remain
+  as **test doubles only**. Don't route production code back to mocks.
+- **Every HTTP call goes through `guardApi()`**, which maps `DioException` to
+  `ApiException(statusCode, message, details)`, `UnauthorizedException` (401),
+  or `ConflictException` (409). Status code `0` means network failure. Show
+  the backend's `message` verbatim; its copy is written for users.
+- **401 handling is centralized.** `AuthInterceptor` clears the token, and
+  `AuthController` listens to `TokenStore` and flips to unauthenticated with
+  the session-expired message. Screens never handle 401 themselves.
+- **User-initiated writes go through `UiController.attempt()`.** It toasts
+  success only after the server agrees and toasts the server's reason on
+  refusal. It returns the error so the caller can react (for example, not
+  flipping a button). Controllers rethrow after `_refetchIfStale(e)`, which
+  reloads the list on `meansStaleState` (409/404) but keeps it on network
+  errors. Guard against double taps for non-idempotent actions (see
+  `LoansController._renewing`, `BookingFlowController._confirming`).
+- **Per-user state is keyed on the user.** Controllers holding a user's data
+  `watch` `authControllerProvider.select((s) => s.user?.id)`, so logging in as
+  someone else refetches instead of showing the previous user's data.
+- **Toasts are mounted at the app root** (`MaterialApp.router(builder: withToasts)`)
+  so pushed routes such as book detail and the booking flow can show them.
+  `ConfirmDialogHost` lives in the tab shell.
+
+## Models & Time
+
+- Models use `@JsonSerializable(createToJson: false)`. Edit the model, then run
+  `build_runner`; never hand-edit `*.g.dart`.
+- **Values computed from server data are getters, not fields**
+  (`Book.coverPalette`, `ResourceBooking.timeSlot`). Client-only UI state is a
+  field excluded from JSON (`Loan.justRenewed`).
+- **Incoming timestamps are UTC.** Convert at the parse boundary with the
+  `localDateTime` converter (`models/json_converters.dart`). **Outgoing**
+  timestamps must be `.toUtc().toIso8601String()`, because the backend requires
+  an offset.
+- Nullable backend strings that are non-null in Dart get `@JsonKey(defaultValue: '')`.
+  Never write `as double` for JSON numbers; integers arrive as `int`.
+- `kTimeSlots`/`kSlotHours` (`features/bookings/time_slots.dart`) mirror the backend's
+  `TIME_SLOTS`, and `kCheckInGracePeriod` mirrors `GRACE_PERIOD_MINUTES`. Change
+  both sides together. Slot windows are built in client local time and the
+  server uses its own local time, so they must share a time zone.
+- Read "now" through `clockProvider` in anything a test needs to pin.
+
+---
+
+## Testing Conventions
+
+- **Every `ProviderScope`/`ProviderContainer` in a test must use
+  `mockRepositoryOverrides()`** (`test/support/mock_overrides.dart`). Otherwise
+  it hits the real network and keystore. Substitute a specific double through its
+  named parameter (`mockRepositoryOverrides(loans: _MyRepo())`) rather than
+  appending a second override for the same provider.
+- Riverpod 3 doesn't export the `Override` type, so don't annotate override-list
+  return types.
+- **JSON tests parse real captured payloads** from `test/fixtures/`
+  (`fixture('name')`). Refresh with `dart run tool/capture_fixtures.dart`
+  against a freshly seeded backend, which writes to the DB; re-seed afterwards.
+- HTTP repository tests use `StubHttpAdapter` (`test/support/stub_http_adapter.dart`).
+  Don't add `http_mock_adapter`.
+- **The splash screen must stay static.** No spinner or repeating animation:
+  `pumpAndSettle()` would never settle and router tests would hang.
+- Follow TDD: write a failing test, implement, run the full suite, then
+  `flutter analyze`.
+- **Live checks** against the real backend go in a temporary
+  `test/zz_live_*_test.dart`, which is deleted afterwards. `flutter test`
+  reports Android as the platform, so override `baseUrl` to
+  `http://localhost:3000`. Seed before and after.
 
 ---
 
 ## Code Organization
 
 ```
-frontend/
-├── lib/
-│   ├── main.dart             # App initialization & ProviderScope entrypoint
-│   ├── core/
-│   │   ├── api_client.dart   # Dio provider, base URL resolution, global interceptors
-│   │   ├── router.dart       # GoRouter configuration & route definitions
-│   │   └── theme.dart        # Global theme and styling
-│   ├── models/               # Immutable Dart data models (Book, Booking, User, Loan)
-│   ├── widgets/              # Reusable UI widgets (cards, dialogs, buttons)
-│   └── features/             # Feature-first modules
-│       ├── auth/             # Login, register, auth token state
-│       ├── catalog/          # Book search, filter, detail, waitlist join
-│       ├── loans/            # Active loans, renewals, return workflows
-│       ├── bookings/         # Resource booking, seat grid, grace-period timer
-│       ├── recommendations/  # AI-driven personalized book recommendation feed
-│       ├── profile/          # User reliability score, attendance history, fines
-│       ├── health/           # Backend connectivity status screen
-│       └── home/             # Main navigation shell and dashboard
-└── test/
-    ├── widget_test.dart      # Widget tests with ProviderScope overrides
-    └── features/             # Feature-specific unit and widget tests
+lib/
+├── main.dart                  # ProviderScope, MaterialApp.router, withToasts
+├── core/
+│   ├── api_client.dart        # Dio, resolveBaseUrl, AuthInterceptor, guardApi
+│   ├── api_exception.dart
+│   ├── auth/token_store.dart  # leaf ChangeNotifier holding the token
+│   ├── clock.dart · time_format.dart
+│   ├── router/app_router.dart # /splash → /login | /home; tab shell
+│   ├── theme/                 # SmartLibTokens + ThemeData
+│   └── ui/                    # UiController, confirm dialogs, toasts
+├── models/                    # json_serializable models + *.g.dart
+├── widgets/                   # shared widgets
+└── features/                  # auth, catalog, loans, bookings, profile,
+                               # recommendations, home, health (unrouted, Phase 1)
+test/
+├── support/                   # mock_overrides, fixtures, stub_http_adapter, fake_token_store
+├── fixtures/                  # captured backend responses
+└── models/ · core/ · features/ · e2e_smoke_test.dart
+tool/capture_fixtures.dart
 ```
 
----
+## Generated & Protected Files
 
-## State Management Conventions (Riverpod)
-- Use `AsyncNotifier` or `FutureProvider` for asynchronous remote data calls.
-- Wrap UI screens in `ConsumerWidget` or `ConsumerStatefulWidget`.
-- Handle all three states gracefully: `AsyncData`, `AsyncLoading`, and `AsyncError`.
-- For widget tests, always supply provider overrides within `ProviderScope(overrides: [...])` to decouple UI tests from active network backends.
-
----
+Never hand-edit: `lib/**/*.g.dart` (regenerate), `build/**`, `.dart_tool/**`.
 
 ## Sibling Access
-When started from `frontend/`, Claude has access to `../backend` to inspect API routes, request parameters, and response schemas.
+
+When started from `frontend/`, read `../backend` for routes, Zod schemas
+(`src/schemas/`), DTOs, and constants (`src/config/constants.ts`) before
+changing a model or repository.

@@ -1,17 +1,15 @@
 // test/support/mock_overrides.dart
 //
-// Every repository provider is `Provider<Interface>`, defaulting today to a
-// `Mock*` implementation. Once the HTTP implementations land (T11+), those
-// defaults flip to real network calls. Any test that constructs a bare
-// `ProviderScope()`/`ProviderContainer()` without overrides is implicitly
-// relying on "mock-by-default" -- once the flip happens, that test would
-// attempt a real socket connection instead.
+// Every repository provider is `Provider<Interface>`, and the production
+// defaults are the `Http*` implementations -- so a test that constructs a
+// bare `ProviderScope()`/`ProviderContainer()` makes real network calls, and
+// reads the real platform keystore through the token store.
 //
-// This file is the fix: apply `mockRepositoryOverrides()` to every bare
-// container so tests stay pinned to the mocks regardless of what the
-// production default is. A function (not a const list) because each
-// container needs its own fresh Mock instances -- sharing one across tests
-// would leak state between them.
+// Apply `mockRepositoryOverrides()` to every container in a test instead: it
+// pins all six repositories to the `Mock*` test doubles and the token store
+// to memory. A function (not a const list) because each container needs its
+// own fresh Mock instances -- sharing one across tests would leak state
+// between them.
 import 'package:smartlib_frontend/core/auth/token_store.dart';
 import 'package:smartlib_frontend/features/auth/auth_repository.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
