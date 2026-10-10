@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/ui/ui_controller.dart';
 import '../../widgets/book_cover.dart';
 import '../../widgets/error_state.dart';
 import '../../widgets/loading_skeleton.dart';
@@ -22,17 +23,32 @@ class _BookDetailScreenState extends ConsumerState<BookDetailScreen> {
   bool _waitlisted = false;
 
   Future<void> _borrow() async {
-    final loan = await ref.read(loanRepositoryProvider).createLoan(widget.bookId);
-    ref.read(loansControllerProvider.notifier).prependLoan(loan);
-    _refreshAvailability();
-    // Borrowing moves the "popular right now" ranking.
-    ref.invalidate(recommendationsProvider);
+    final error = await ref.read(uiControllerProvider.notifier).attempt(() async {
+      final loan = await ref.read(loanRepositoryProvider).createLoan(widget.bookId);
+      ref.read(loansControllerProvider.notifier).prependLoan(loan);
+    });
+    if (!mounted) return;
+    if (error == null) {
+      _refreshAvailability();
+      // Borrowing moves the "popular right now" ranking.
+      ref.invalidate(recommendationsProvider);
+    } else if (error.meansStaleState) {
+      // e.g. the last copy went while this screen was open.
+      _refreshAvailability();
+    }
   }
 
   Future<void> _joinWaitlist() async {
-    await ref.read(bookRepositoryProvider).joinWaitlist(widget.bookId);
-    _refreshAvailability();
-    setState(() => _waitlisted = true);
+    final error = await ref.read(uiControllerProvider.notifier).attempt(
+          () => ref.read(bookRepositoryProvider).joinWaitlist(widget.bookId),
+        );
+    if (!mounted) return;
+    if (error == null) {
+      _refreshAvailability();
+      setState(() => _waitlisted = true);
+    } else if (error.meansStaleState) {
+      _refreshAvailability();
+    }
   }
 
   // Availability lives on the server now: refetch this book, and the search

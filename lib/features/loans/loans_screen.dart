@@ -74,7 +74,9 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
                   if (l.canRenew == false) Text('Renewal unavailable — ${l.blockedReason}'),
                   Row(children: [
                     Expanded(child: OutlinedButton(
-                      onPressed: l.canRenew ? () => ref.read(loansControllerProvider.notifier).renew(l.id) : null,
+                      onPressed: l.canRenew
+                          ? () => ref.read(uiControllerProvider.notifier).attempt(() => ref.read(loansControllerProvider.notifier).renew(l.id))
+                          : null,
                       child: const Text('Renew'),
                     )),
                     const SizedBox(width: 8),

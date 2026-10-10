@@ -1,5 +1,6 @@
 // test/features/bookings/bookings_controller_test.dart
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
@@ -14,6 +15,15 @@ class _CountingBookingRepository extends MockBookingRepository {
     fetches++;
     return super.myBookings();
   }
+}
+
+class _RefusingBookingRepository extends _CountingBookingRepository {
+  @override
+  Future<ResourceBooking> checkIn(String bookingId) async =>
+      throw const ConflictException('The grace period for this booking has passed.');
+  @override
+  Future<void> cancelBooking(String bookingId) async =>
+      throw const ConflictException('This booking cannot be cancelled.');
 }
 
 void main() {
@@ -64,6 +74,28 @@ void main() {
     await auth.register('Second Student', 'second@thapar.edu', 'password123');
     await container.read(bookingsControllerProvider.future);
 
+    expect(repo.fetches, 2);
+  });
+
+  test('a refused check-in is reported, and the list is refetched -- it was stale', () async {
+    final repo = _RefusingBookingRepository();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    await container.read(bookingsControllerProvider.future);
+
+    await expectLater(container.read(bookingsControllerProvider.notifier).checkIn('bk2'), throwsA(isA<ConflictException>()));
+    await container.read(bookingsControllerProvider.future);
+    expect(repo.fetches, 2);
+  });
+
+  test('a refused cancellation is reported, and the list is refetched', () async {
+    final repo = _RefusingBookingRepository();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    await container.read(bookingsControllerProvider.future);
+
+    await expectLater(container.read(bookingsControllerProvider.notifier).cancel('bk1'), throwsA(isA<ConflictException>()));
+    await container.read(bookingsControllerProvider.future);
     expect(repo.fetches, 2);
   });
 }

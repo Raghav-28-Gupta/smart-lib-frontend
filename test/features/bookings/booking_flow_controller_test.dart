@@ -1,5 +1,7 @@
 // test/features/bookings/booking_flow_controller_test.dart
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/bookings/booking_flow_controller.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
@@ -19,6 +21,21 @@ class _ConflictOnceRepository extends MockBookingRepository {
   Future<ResourceBooking> createBooking({required Resource resource, required DateTime start, required DateTime end}) async {
     requested.add((resourceId: resource.id, start: start, end: end));
     if (requested.length == 1) throw BookingConflictException([alternative]);
+    return super.createBooking(resource: resource, start: start, end: end);
+  }
+}
+
+/// Every createBooking waits on [gate], then succeeds or throws [error].
+class _GatedBookingRepository extends MockBookingRepository {
+  final gate = Completer<void>();
+  Object? error;
+  int calls = 0;
+
+  @override
+  Future<ResourceBooking> createBooking({required Resource resource, required DateTime start, required DateTime end}) async {
+    calls++;
+    await gate.future;
+    if (error != null) throw error!;
     return super.createBooking(resource: resource, start: start, end: end);
   }
 }
@@ -121,5 +138,44 @@ void main() {
     await notifier.confirm();
 
     expect(repo.requested.last.start, DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 9));
+  });
+
+  test('a double tap on Confirm books once', () async {
+    // A second request would come back as a conflict with the first, and
+    // replace the success screen with "that slot was just taken".
+    final repo = _GatedBookingRepository();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    final notifier = container.read(bookingFlowControllerProvider.notifier);
+    notifier.setDateIndex(1);
+    notifier.pickSlot(const Resource(id: 's3', name: 'Silent Zone · Desk 3', type: ResourceType.seat, takenSlotsToday: []), '9:00 AM');
+    notifier.goToConfirm();
+
+    final first = notifier.confirm();
+    final second = notifier.confirm();
+    repo.gate.complete();
+    await Future.wait([first, second]);
+    expect(repo.calls, 1);
+    expect(container.read(bookingFlowControllerProvider).result, isNotNull);
+  });
+
+  test('a refusal that is not a conflict is reported, not swallowed', () async {
+    // e.g. the slot passed while the user sat on the confirm screen.
+    final repo = _GatedBookingRepository()..error = const ApiException(400, 'That time slot has already passed. Pick a later one.');
+    repo.gate.complete();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+    addTearDown(container.dispose);
+    final notifier = container.read(bookingFlowControllerProvider.notifier);
+    notifier.setDateIndex(1);
+    notifier.pickSlot(const Resource(id: 's3', name: 'Silent Zone · Desk 3', type: ResourceType.seat, takenSlotsToday: []), '9:00 AM');
+    notifier.goToConfirm();
+
+    await expectLater(notifier.confirm(), throwsA(isA<ApiException>()));
+    final state = container.read(bookingFlowControllerProvider);
+    expect(state.result, isNull);
+    expect(state.conflictAlternatives, isNull);
+    // The guard was released: confirming again goes back to the server.
+    await expectLater(notifier.confirm(), throwsA(isA<ApiException>()));
+    expect(repo.calls, 2);
   });
 }

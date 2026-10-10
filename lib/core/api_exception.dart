@@ -21,6 +21,13 @@ class ApiException implements Exception {
 
   bool get isNetworkError => statusCode == 0;
 
+  /// The server refused because the client's picture is out of date -- the
+  /// loan was already returned, someone joined the waitlist, the item is
+  /// gone. A list that produced this request should be refetched. A network
+  /// error doesn't qualify: nothing is known to have changed, and refetching
+  /// would fail too.
+  bool get meansStaleState => statusCode == 409 || statusCode == 404;
+
   static const networkMessage = "Can't reach the library server. Check your connection and try again.";
   static const genericMessage = 'Something went wrong. Please try again.';
 

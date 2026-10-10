@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'ui_controller.dart';
 
+/// A [MaterialApp.builder] that layers the toast above every route.
+///
+/// The book detail and booking flow screens are pushed over the tab shell, so
+/// a host inside the shell sat underneath them and their toasts never showed.
+Widget withToasts(BuildContext context, Widget? child) =>
+    Stack(fit: StackFit.expand, children: [child ?? const SizedBox.shrink(), const ToastHost()]);
+
 class ToastHost extends ConsumerStatefulWidget {
   const ToastHost({super.key});
   @override
@@ -29,7 +36,9 @@ class _ToastHostState extends ConsumerState<ToastHost> {
     }
     if (toast == null) return const SizedBox.shrink();
     return Positioned(
-      bottom: 14, left: 14, right: 14,
+      // Clear of the tab shell's NavigationBar (80 high) -- the host sits
+      // above every route now, not inside the shell's body.
+      bottom: MediaQuery.viewPaddingOf(context).bottom + 80 + 14, left: 14, right: 14,
       child: Material(
         color: Colors.black87,
         borderRadius: BorderRadius.circular(16),

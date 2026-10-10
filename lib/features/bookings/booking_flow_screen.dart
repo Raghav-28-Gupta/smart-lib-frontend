@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/clock.dart';
+import '../../core/ui/ui_controller.dart';
 import '../../models/resource.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
@@ -173,7 +174,9 @@ class BookingFlowScreen extends ConsumerWidget {
         const SizedBox(height: 12),
         const Text('Check in within 15 minutes of your start time, or the slot is released automatically for someone else.'),
         const SizedBox(height: 16),
-        FilledButton(onPressed: notifier.confirm, child: const Text('Confirm booking')),
+        // A conflict is handled in the flow itself; any other refusal (say, the
+      // slot passed while the user sat here) is reported as a toast.
+      FilledButton(onPressed: () => ref.read(uiControllerProvider.notifier).attempt(notifier.confirm), child: const Text('Confirm booking')),
         TextButton(onPressed: notifier.backToPicker, child: const Text('Change slot')),
       ]),
     );

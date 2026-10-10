@@ -14,7 +14,6 @@ import '../../features/loans/loans_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/recommendations/recommendations_screen.dart';
 import '../ui/confirm_dialog.dart';
-import '../ui/toast_overlay.dart';
 
 // Keyed on status, not loggedIn: unknown -> unauthenticated doesn't change
 // loggedIn (false both ways), but it has to move the user off the splash.
@@ -73,7 +72,8 @@ class _AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final index = _tabPaths.indexOf(location).clamp(0, _tabPaths.length - 1);
     return Scaffold(
-      body: Stack(children: [child, const ConfirmDialogHost(), const ToastHost()]),
+      // Toasts are mounted at the app root (main.dart), above every route.
+      body: Stack(children: [child, const ConfirmDialogHost()]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) => context.go(_tabPaths[i]),

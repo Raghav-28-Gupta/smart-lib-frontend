@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/clock.dart';
+import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/features/bookings/booking_flow_screen.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
@@ -14,6 +16,13 @@ class _NoAlternativesRepository extends MockBookingRepository {
   @override
   Future<ResourceBooking> createBooking({required Resource resource, required DateTime start, required DateTime end}) async =>
       throw BookingConflictException(const []);
+}
+
+/// The slot passed while the user sat on the confirm screen.
+class _SlotPassedRepository extends MockBookingRepository {
+  @override
+  Future<ResourceBooking> createBooking({required Resource resource, required DateTime start, required DateTime end}) async =>
+      throw const ApiException(400, 'That time slot has already passed. Pick a later one.');
 }
 
 void main() {
@@ -84,5 +93,27 @@ void main() {
     await tester.tap(find.byKey(const Key('dateChip-1')));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(ChoiceChip, '9:00 AM'), findsWidgets);
+  });
+
+  testWidgets('a refusal on confirm says why and stays on the confirm screen', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(bookings: _SlotPassedRepository()),
+      child: MaterialApp(theme: buildSmartLibTheme(), builder: withToasts, home: const BookingFlowScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dateChip-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('9:00 AM').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm booking'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('That time slot has already passed. Pick a later one.'), findsOneWidget);
+    expect(find.text('Confirm your booking'), findsOneWidget);
+    expect(find.text('Booked'), findsNothing);
+    await tester.pump(const Duration(seconds: 3));
   });
 }

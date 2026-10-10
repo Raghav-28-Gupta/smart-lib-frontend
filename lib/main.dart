@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/smartlib_theme.dart';
+import 'core/ui/toast_overlay.dart';
 
 void main() {
   runApp(const ProviderScope(child: SmartLibApp()));
@@ -17,6 +18,7 @@ class SmartLibApp extends ConsumerWidget {
       title: 'SmartLib',
       theme: buildSmartLibTheme(),
       routerConfig: ref.watch(routerProvider),
+      builder: withToasts,
     );
   }
 }

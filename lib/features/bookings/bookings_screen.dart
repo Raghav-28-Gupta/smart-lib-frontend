@@ -85,7 +85,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                     Text('Check in within ${_graceLabel(b.graceRemainingSeconds)}'),
                     Row(children: [
                       Expanded(child: FilledButton(
-                        onPressed: () => ref.read(bookingsControllerProvider.notifier).checkIn(b.id),
+                        onPressed: () => ref.read(uiControllerProvider.notifier).attempt(() => ref.read(bookingsControllerProvider.notifier).checkIn(b.id)),
                         child: const Text('Check In'),
                       )),
                       const SizedBox(width: 8),

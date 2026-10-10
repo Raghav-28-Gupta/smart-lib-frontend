@@ -1,5 +1,7 @@
 // test/features/loans/loans_controller_test.dart
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
@@ -17,6 +19,35 @@ class _CountingLoanRepository extends MockLoanRepository {
     return [
       Loan(id: 'fetch-$fetches', bookId: 'b1', dueDate: DateTime(2026, 10, 1), status: LoanStatus.normal, fineAmount: 0, canRenew: true),
     ];
+  }
+}
+
+/// The mock, with renew/return made to fail or stall on demand.
+class _ScriptedLoanRepository extends MockLoanRepository {
+  Object? renewError;
+  Object? returnError;
+  Completer<void>? renewGate;
+  int fetches = 0;
+  int renewCalls = 0;
+
+  @override
+  Future<List<Loan>> activeLoans() {
+    fetches++;
+    return super.activeLoans();
+  }
+
+  @override
+  Future<Loan> renew(String loanId) async {
+    renewCalls++;
+    await renewGate?.future;
+    if (renewError != null) throw renewError!;
+    return super.renew(loanId);
+  }
+
+  @override
+  Future<void> returnLoan(String loanId) async {
+    if (returnError != null) throw returnError!;
+    return super.returnLoan(loanId);
   }
 }
 
@@ -79,5 +110,57 @@ void main() {
     container.read(authControllerProvider.notifier).clearValidation();
     await container.read(loansControllerProvider.future);
     expect(repo.fetches, 1);
+  });
+
+  group('when the server refuses', () {
+    Future<(ProviderContainer, _ScriptedLoanRepository)> loaded() async {
+      final repo = _ScriptedLoanRepository();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+      return (container, repo);
+    }
+
+    test('a refused renewal is reported, and the list is refetched -- it was stale', () async {
+      // e.g. someone joined the waitlist since the list loaded, so canRenew
+      // is out of date.
+      final (container, repo) = await loaded();
+      repo.renewError = const ConflictException('1 student is waiting for this title.');
+      await expectLater(container.read(loansControllerProvider.notifier).renew('loan1'), throwsA(isA<ConflictException>()));
+      await container.read(loansControllerProvider.future);
+      expect(repo.fetches, 2);
+    });
+
+    test('a refused return is reported, and the list is refetched', () async {
+      final (container, repo) = await loaded();
+      repo.returnError = const ConflictException('This loan has already been returned.');
+      await expectLater(container.read(loansControllerProvider.notifier).returnLoan('loan1'), throwsA(isA<ConflictException>()));
+      await container.read(loansControllerProvider.future);
+      expect(repo.fetches, 2);
+    });
+
+    test('an unreachable server keeps the list as it is', () async {
+      // Refetching would fail too, and turn the whole screen into an error.
+      final (container, repo) = await loaded();
+      repo.renewError = const ApiException(0, ApiException.networkMessage);
+      await expectLater(container.read(loansControllerProvider.notifier).renew('loan1'), throwsA(isA<ApiException>()));
+      expect(repo.fetches, 1);
+      expect(container.read(loansControllerProvider).value, hasLength(4));
+    });
+  });
+
+  test('a double tap on Renew renews once', () async {
+    // Renewing twice would use up the renewal limit for nothing.
+    final repo = _ScriptedLoanRepository()..renewGate = Completer<void>();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo));
+    addTearDown(container.dispose);
+    await container.read(loansControllerProvider.future);
+    final notifier = container.read(loansControllerProvider.notifier);
+
+    final first = notifier.renew('loan1');
+    final second = notifier.renew('loan1');
+    repo.renewGate!.complete();
+    await Future.wait([first, second]);
+    expect(repo.renewCalls, 1);
   });
 }

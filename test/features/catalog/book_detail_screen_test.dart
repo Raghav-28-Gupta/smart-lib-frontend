@@ -2,7 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
+import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
 import 'package:smartlib_frontend/features/catalog/book_detail_screen.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/models/loan.dart';
@@ -22,6 +24,9 @@ class _CleanLoanRepository implements LoanRepository {
 
   /// Book ids passed to createLoan, in call order.
   final createdFor = <String>[];
+
+  /// When set, createLoan fails with this instead.
+  Object? refuseWith;
 
   @override
   Future<List<Loan>> activeLoans() async => List.of(_loans);
@@ -45,6 +50,7 @@ class _CleanLoanRepository implements LoanRepository {
   @override
   Future<Loan> createLoan(String bookId) async {
     createdFor.add(bookId);
+    if (refuseWith != null) throw refuseWith!;
     final loan = Loan(
       id: 'loan-$bookId-${DateTime.now().microsecondsSinceEpoch}', bookId: bookId,
       dueDate: DateTime.now().add(const Duration(days: 14)), status: LoanStatus.normal,
@@ -96,5 +102,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('2 people ahead of you on the waitlist.'), findsOneWidget);
     expect(find.text('Join Waitlist'), findsOneWidget);
+  });
+
+  testWidgets('a refused borrow says why, and the button does not claim it worked', (tester) async {
+    final loans = _CleanLoanRepository()..refuseWith = const ConflictException('No available copies right now.');
+    await tester.pumpWidget(ProviderScope(
+      overrides: mockRepositoryOverrides(loans: loans),
+      child: MaterialApp(theme: buildSmartLibTheme(), builder: withToasts, home: const BookDetailScreen(bookId: 'b1')),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Borrow this copy'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No available copies right now.'), findsOneWidget);
+    expect(find.textContaining('Borrowed'), findsNothing);
+    await tester.pump(const Duration(seconds: 3));
   });
 }

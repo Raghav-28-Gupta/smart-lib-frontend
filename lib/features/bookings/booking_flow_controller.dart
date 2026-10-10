@@ -59,6 +59,10 @@ class BookingFlowState {
 }
 
 class BookingFlowController extends Notifier<BookingFlowState> {
+  // A second confirm would come back as a conflict with the first and replace
+  // the success screen with "that slot was just taken".
+  bool _confirming = false;
+
   @override
   BookingFlowState build() => const BookingFlowState();
 
@@ -74,12 +78,17 @@ class BookingFlowController extends Notifier<BookingFlowState> {
     final slot = state.selectedSlot;
     if (resource == null || slot == null) return;
     final window = state.alternativeWindow ?? slotWindow(state.dateIndex, slot);
+    if (_confirming) return;
+    _confirming = true;
     try {
       final booking = await ref.read(bookingRepositoryProvider).createBooking(resource: resource, start: window.start, end: window.end);
       ref.read(bookingsControllerProvider.notifier).prependBooking(booking);
       state = state.copyWith(result: booking, clearAlternatives: true);
     } on BookingConflictException catch (e) {
       state = state.copyWith(conflictAlternatives: e.alternatives, clearResult: true);
+    } finally {
+      // Any other refusal propagates for the screen to report.
+      _confirming = false;
     }
   }
 
