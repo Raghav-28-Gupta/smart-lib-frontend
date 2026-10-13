@@ -148,6 +148,19 @@ test/
 tool/capture_fixtures.dart
 ```
 
+## Release & Deploy
+
+- Android app ID `io.github.raghav28gupta.smartlib`. It's permanent once
+  published, so don't change it.
+- Release signing reads `android/key.properties`, which is never committed.
+  Without it, release builds silently use the debug key, and the release
+  workflow refuses those.
+- Deployed builds always pass `--dart-define=SMARTLIB_API_BASE_URL=...`
+  (`web.yml`, `release.yml`).
+- `test/platform/release_config_test.dart` guards the platform files release
+  depends on: `INTERNET` in the main manifest, cleartext debug-only, and app
+  names.
+
 ## Generated & Protected Files
 
 Never hand-edit: `lib/**/*.g.dart` (regenerate), `build/**`, `.dart_tool/**`.

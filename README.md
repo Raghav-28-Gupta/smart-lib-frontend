@@ -60,7 +60,7 @@ nothing even though you have emulators in Android Studio, start one directly:
 |---|---|
 | Web / Windows | `http://localhost:3000` |
 | Android emulator | `http://10.0.2.2:3000` (the emulator's alias for the host machine) |
-| Anything else | whatever you pass in, below |
+| Anything else, and every deployed build | whatever you pass in, below |
 
 ### Physical devices
 
@@ -143,6 +143,71 @@ regenerate and commit the `*.g.dart` output:
 ```bash
 dart run build_runner build
 ```
+
+## Deploy
+
+| What | How | Where |
+|---|---|---|
+| Web | `.github/workflows/web.yml`: every push and PR runs analyze and the tests; a push to `main` then builds and publishes | https://raghav-28-gupta.github.io/smart-lib-frontend/ |
+| Android | `.github/workflows/release.yml`: push a tag like `v1.0.0` | A GitHub Release with the signed APK (Windows isn't released; build it locally) |
+
+Every deployed build has the production backend URL compiled in
+(`--dart-define`). A release build made **without** it points at `localhost`
+and can't reach anything.
+
+### One-time setup (repository Settings)
+
+1. **Pages** → Build and deployment → Source: **GitHub Actions**.
+2. **Variable** `SMARTLIB_API_BASE_URL` (Settings → Secrets and variables →
+   Actions → Variables): the backend's URL, currently
+   `https://smart-lib-backend.onrender.com` (no trailing slash). Set.
+3. **Android signing key.** Create it once and keep it forever: an installed
+   app only accepts updates signed with the same key. Run these in a normal
+   PowerShell window; `keytool` asks you to choose a password and fill in some
+   name fields (anything is fine):
+   ```powershell
+   & "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -genkey -v `
+     -keystore "$HOME\smartlib-upload.jks" -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+   Then store it as four repository **Secrets**. `gh secret set` asks for each
+   password in your terminal, so the values never appear in a file or chat:
+   ```powershell
+   $repo = 'Raghav-28-Gupta/smart-lib-frontend'
+   gh secret set ANDROID_KEYSTORE_BASE64 -R $repo --body ([Convert]::ToBase64String([IO.File]::ReadAllBytes("$HOME\smartlib-upload.jks")))
+   gh secret set ANDROID_KEYSTORE_PASSWORD -R $repo   # type the keystore password
+   gh secret set ANDROID_KEY_ALIAS -R $repo --body upload
+   gh secret set ANDROID_KEY_PASSWORD -R $repo        # the same password again
+   ```
+   (keytool uses one password for both the keystore and the key.) You can also
+   add them by hand under Settings → Secrets and variables → Actions → Secrets.
+
+   Back up `smartlib-upload.jks` and its password outside the repository. If
+   either is lost, installed apps can no longer be updated. Never commit them;
+   `android/.gitignore` already excludes both.
+
+### Releasing
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow runs the tests, builds the APK, refuses one signed with the
+debug key, and publishes it on the repository's Releases page. To install,
+open the APK on the phone and allow "install unknown apps" for the browser or
+file manager you used.
+
+The Android app ID is `io.github.raghav28gupta.smartlib`. Don't change it
+after the first release.
+
+### Building a release locally
+
+```bash
+flutter build apk --release --dart-define=SMARTLIB_API_BASE_URL=https://smartlib-backend.onrender.com
+```
+
+Without `android/key.properties`, this is signed with the debug key. That's
+fine for trying the build, but don't hand it out.
 
 ## Manual acceptance checklist
 

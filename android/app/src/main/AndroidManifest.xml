@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Flutter's template declares INTERNET only in the debug and profile
+         manifests; without it here, a release APK fails every request. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="smartlib_frontend"
+        android:label="SmartLib"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

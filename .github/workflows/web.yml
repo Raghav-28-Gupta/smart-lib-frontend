@@ -1,0 +1,76 @@
+# Tests every push and pull request; on main, also builds the web app and
+# publishes it to GitHub Pages.
+#
+# Needs (repo Settings): Pages -> Source "GitHub Actions", and the Actions
+# variable SMARTLIB_API_BASE_URL, e.g. https://smartlib-backend.onrender.com
+name: Web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.0
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.0
+          channel: stable
+          cache: true
+      - name: Check the backend URL is configured
+        env:
+          API: ${{ vars.SMARTLIB_API_BASE_URL }}
+        run: |
+          if [ -z "$API" ]; then
+            echo "::error::Set the SMARTLIB_API_BASE_URL variable (Settings -> Secrets and variables -> Actions -> Variables)"
+            exit 1
+          fi
+      # The backend URL is compiled in. Pages serves the site under
+      # /<repo-name>/, so the base href must match. Routing uses '#' URLs,
+      # so deep links need no server-side rewrites.
+      - name: Build
+        run: >-
+          flutter build web --release
+          --base-href "/${{ github.event.repository.name }}/"
+          --dart-define=SMARTLIB_API_BASE_URL=${{ vars.SMARTLIB_API_BASE_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

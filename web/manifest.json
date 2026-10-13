@@ -1,11 +1,11 @@
 {
-    "name": "smartlib_frontend",
-    "short_name": "smartlib_frontend",
+    "name": "SmartLib",
+    "short_name": "SmartLib",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#f5ead8",
+    "theme_color": "#f5ead8",
+    "description": "Borrow books, join waitlists, and book study seats and rooms.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "smartlib_frontend" "\0"
+            VALUE "CompanyName", "SmartLib" "\0"
+            VALUE "FileDescription", "SmartLib" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "smartlib_frontend" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "smartlib_frontend.exe" "\0"
-            VALUE "ProductName", "smartlib_frontend" "\0"
+            VALUE "InternalName", "smartlib" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 SmartLib. All rights reserved." "\0"
+            VALUE "OriginalFilename", "smartlib.exe" "\0"
+            VALUE "ProductName", "SmartLib" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -12,3 +12,6 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# JVM crash logs (e.g. Gradle running out of memory)
+hs_err_pid*.log
