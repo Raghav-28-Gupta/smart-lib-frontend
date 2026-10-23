@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/clock.dart';
+import '../../core/time_format.dart';
 import '../../core/ui/ui_controller.dart';
-import '../../models/resource.dart';
+import '../../models/resource_booking.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
 import 'booking_flow_controller.dart';
@@ -123,14 +124,23 @@ class BookingFlowScreen extends ConsumerWidget {
   }
 
   Widget _buildConfirm(BuildContext context, WidgetRef ref, BookingFlowState flow, BookingFlowController notifier) {
-    if (flow.result != null) {
+    final result = flow.result;
+    if (result != null) {
+      final requested = result.status == BookingStatus.requested;
       return Center(child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.check_circle, size: 56),
+          Icon(requested ? Icons.schedule : Icons.check_circle, size: 56),
           const SizedBox(height: 10),
-          Text('Booked', style: Theme.of(context).textTheme.titleLarge),
+          Text(requested ? 'Request sent' : 'Booked', style: Theme.of(context).textTheme.titleLarge),
           Text('${flow.selectedResource?.name}, ${_dateLabel(flow.dateIndex)} · ${flow.selectedSlot}'),
+          if (requested) ...[
+            const SizedBox(height: 8),
+            Text(
+              "We'll hold the slot until ${dayTimeLabel(result.expiresAt ?? result.startTime.add(kCheckInGracePeriod), now: ref.read(clockProvider)())}. Check My Bookings for the librarian's answer.",
+              textAlign: TextAlign.center,
+            ),
+          ],
           const SizedBox(height: 12),
           FilledButton(
               onPressed: () {
@@ -162,21 +172,28 @@ class BookingFlowScreen extends ConsumerWidget {
         ]),
       );
     }
+    // Rooms wait for a librarian, so their confirm step asks rather than books.
+    final room = flow.selectedResource?.type == ResourceType.room;
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Confirm your booking', style: Theme.of(context).textTheme.titleMedium),
+        Text(room ? 'Confirm your request' : 'Confirm your booking', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 12),
         Card(child: Padding(
           padding: const EdgeInsets.all(12),
           child: Text('${flow.selectedResource?.name}\n${_dateLabel(flow.dateIndex)} · ${flow.selectedSlot}'),
         )),
         const SizedBox(height: 12),
-        const Text('Check in within 15 minutes of your start time, or the slot is released automatically for someone else.'),
+        Text(room
+            ? 'A librarian approves room bookings. If none does before your 15-minute grace period ends, the request expires.'
+            : 'Check in within 15 minutes of your start time, or the slot is released automatically for someone else.'),
         const SizedBox(height: 16),
         // A conflict is handled in the flow itself; any other refusal (say, the
-      // slot passed while the user sat here) is reported as a toast.
-      FilledButton(onPressed: () => ref.read(uiControllerProvider.notifier).attempt(notifier.confirm), child: const Text('Confirm booking')),
+        // slot passed while the user sat here) is reported as a toast.
+        FilledButton(
+          onPressed: () => ref.read(uiControllerProvider.notifier).attempt(notifier.confirm),
+          child: Text(room ? 'Send request' : 'Confirm booking'),
+        ),
         TextButton(onPressed: notifier.backToPicker, child: const Text('Change slot')),
       ]),
     );

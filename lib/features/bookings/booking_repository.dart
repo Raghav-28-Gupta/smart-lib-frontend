@@ -139,9 +139,13 @@ class MockBookingRepository implements BookingRepository {
         _alternative('s3', 1, '5:00 PM'),
       ]);
     }
+    // Rooms wait for a librarian, as on the server; seats are booked at once.
+    final isRoom = resource.type == ResourceType.room;
     final booking = ResourceBooking(
       id: 'bk-${DateTime.now().microsecondsSinceEpoch}', resourceName: resource.name, type: resource.type,
-      startTime: start, endTime: end, status: BookingStatus.upcomingFar,
+      startTime: start, endTime: end,
+      status: isRoom ? BookingStatus.requested : BookingStatus.upcomingFar,
+      expiresAt: isRoom ? start.add(kCheckInGracePeriod) : null,
     );
     _bookings.insert(0, booking);
     return booking;
