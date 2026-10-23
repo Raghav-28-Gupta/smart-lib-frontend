@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_exception.dart';
 import '../../models/borrow_request.dart';
 import '../auth/auth_controller.dart';
+import '../loans/loans_controller.dart';
 import 'borrow_request_repository.dart';
 
 /// The logged-in student's borrow requests, shared by the book pages and My Loans.
@@ -55,8 +56,12 @@ class BorrowRequestsController extends AsyncNotifier<List<BorrowRequest>> {
   }
 
   // The caller reports the failure; this keeps the list true to the server.
+  // A 409/404 can also mean a librarian already approved the request, which
+  // created a loan, so the loans are refetched too -- quietly.
   void _refetchIfStale(ApiException e) {
-    if (e.meansStaleState) ref.invalidateSelf();
+    if (!e.meansStaleState) return;
+    ref.invalidateSelf();
+    ref.read(loansControllerProvider.notifier).refreshQuietly();
   }
 }
 

@@ -8,6 +8,7 @@ import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/ui/confirm_dialog.dart';
 import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_request_repository.dart';
+import 'package:smartlib_frontend/features/borrow_requests/borrow_requests_controller.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/loans/loans_screen.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
@@ -219,6 +220,26 @@ void main() {
     expect(find.textContaining('Waiting for a librarian'), findsOneWidget);
     expect(find.text("Couldn't load your loans"), findsNothing);
     expect(find.text(ApiException.networkMessage), findsNothing);
+  });
+
+  testWidgets('opening My Loans re-checks a request the server answered while it was closed, without waiting 30 seconds', (tester) async {
+    final requests = _FlakyRequests(requests: [_request('br-3', 'b12', 'Atomic Habits', BorrowRequestStatus.pending)]);
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(borrowRequests: requests));
+    addTearDown(container.dispose);
+    // The student requested earlier, so the controller still holds it as pending...
+    await container.read(borrowRequestsControllerProvider.future);
+    // ...and a librarian approved it since: the server no longer lists it.
+    requests.decide('b12', BorrowRequestStatus.approved);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: buildSmartLibTheme(), home: const LoansScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Waiting for a librarian'), findsNothing);
+    expect(find.text('Cancel request'), findsNothing);
+    expect(find.text('Requests'), findsNothing);
   });
 
   testWidgets('the empty state waits until there are no loans, waitlist or requests', (tester) async {

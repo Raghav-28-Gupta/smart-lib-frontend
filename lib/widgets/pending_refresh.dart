@@ -8,6 +8,11 @@ const kPendingRecheckInterval = Duration(seconds: 30);
 /// While [active], calls [onTick] every [interval], so a librarian's answer
 /// shows up without a manual refresh. Stops as soon as [active] turns false or
 /// the screen goes away.
+///
+/// A screen that opens already [active] is showing what the controllers last
+/// held, which may predate the librarian's answer, so [onTick] is also called
+/// once right after its first frame. Not when [active] turns true later: that
+/// is right after the student's own request, which was just answered.
 class PendingRefresh extends StatefulWidget {
   const PendingRefresh({
     super.key,
@@ -33,6 +38,11 @@ class _PendingRefreshState extends State<PendingRefresh> {
   void initState() {
     super.initState();
     _sync();
+    if (widget.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.active) widget.onTick();
+      });
+    }
   }
 
   @override

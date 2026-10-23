@@ -70,10 +70,14 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
 - **Availability: use `Book.freeCopies`, not `availableCopies`.** A copy held
   for a waitlisted student's claim (`heldCopies`) is on the shelf but refused
   to everyone else. The one exception is the claimant: when the student's own
-  `Reservation` is `held`, offer Borrow.
+  `Reservation` is `held`, offer Request to borrow.
 - **Per-user state is keyed on the user.** Controllers holding a user's data
   `watch` `authControllerProvider.select((s) => s.user?.id)`, so logging in as
   someone else refetches instead of showing the previous user's data.
+- **Screens showing a pending request wrap their body in `PendingRefresh`**
+  (`lib/widgets/pending_refresh.dart`). It re-checks on open and every 30 s
+  through the controllers' `refreshQuietly()`, which keeps the current list
+  when the network fails.
 - **Toasts are mounted at the app root** (`MaterialApp.router(builder: withToasts)`)
   so pushed routes such as book detail and the booking flow can show them.
   `ConfirmDialogHost` lives in the tab shell.

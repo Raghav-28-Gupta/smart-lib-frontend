@@ -133,8 +133,19 @@ script **writes to the dev database**, so seed before and after:
 
 ```bash
 cd ../backend && npm run seed && npm run dev    # separate terminal
-dart run tool/capture_fixtures.dart             # from frontend/
+SMARTLIB_ADMIN_EMAIL=you@thapar.edu SMARTLIB_ADMIN_PASSWORD_FILE=/path/to/password.txt   dart run tool/capture_fixtures.dart           # from frontend/
 cd ../backend && npm run seed                   # restore the demo data
+```
+
+The capture has an admin approve and decline requests, so it needs an admin
+account (`cd ../backend && npm run create-admin`). Its password is read from a
+file so it never lands in your shell history. In PowerShell, set the two
+variables first:
+
+```powershell
+$env:SMARTLIB_ADMIN_EMAIL = 'you@thapar.edu'
+$env:SMARTLIB_ADMIN_PASSWORD_FILE = 'C:\path\to\password.txt'
+dart run tool/capture_fixtures.dart
 ```
 
 **Code generation.** Models use `json_serializable`. After changing a model,
@@ -221,35 +232,43 @@ when you're done, because the steps change the demo data.
 | 3 | Profile → **Log out** | Back on Log in | ☐ | ☐ | ☐ |
 | 4 | Log in as the demo user | Home: *Welcome back, Aditi* | ☐ | ☐ | ☐ |
 | 5 | My Loans | 4 loans; one overdue showing *Fine: ₹30.0 and counting*; one showing *Renewal unavailable — 1 student is waiting for this title.* | ☐ | ☐ | ☐ |
-| 6 | Search for a title, open a book with copies available, **Borrow this copy** | Button becomes *Borrowed — see My Loans…*; available count drops; the loan appears in My Loans | ☐ | ☐ | ☐ |
-| 7 | **Renew** a renewable loan | *Renewed — now due …* | ☐ | ☐ | ☐ |
-| 8 | **Return** a loan → confirm | Toast *Returned.*; the loan leaves the list | ☐ | ☐ | ☐ |
-| 9 | Open *Operating System Concepts* (no copies free) → **Join Waitlist**; go back, then open it again | *You're #3 in line.* is still there; My Loans lists it under **Waitlist** | ☐ | ☐ | ☐ |
-| 10 | On that book, **Leave waitlist** | Toast *You've left the waitlist.*; *Join Waitlist* is back | ☐ | ☐ | ☐ |
-| 11 | **Held copy**: on another client, log in as `seed.student1@thapar.edu` (same password) and borrow *The Midnight Library*. As Aditi, join its waitlist. Then return it as the other student | Aditi's My Loans shows *Held for you until …* and the book offers **Borrow this copy**; the other student sees *Every copy on the shelf is held for a student on the waitlist.* | ☐ | ☐ | ☐ |
-| 12 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
-| 13 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
-| 14 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In** | *Enjoy your session.* | ☐ | ☐ | ☐ |
-| 15 | **Cancel** a booking → confirm | Toast *Booking canceled.*; it leaves the list | ☐ | ☐ | ☐ |
-| 16 | Profile | Reliability ring at 50, *Building back up*; **How reliability works** opens a dialog | ☐ | ☐ | ☐ |
-| 17 | Home → Recommended for You → See all | A list of books | ☐ | ☐ | ☐ |
-| 18 | **Relaunch** (web: reload the page; Windows: close the window and run again; Android: swipe it away from Recents and reopen) | Splash, then Home, **without logging in** | ☐ | ☐ | ☐ |
-| 19 | **Expired session**: restart the backend with a throwaway secret (below), then type in Search | Back on Log in with *Your session has expired. Please log in again.* | ☐ | ☐ | ☐ |
-| 20 | Restart the backend normally and log in again | Home | ☐ | ☐ | ☐ |
+| 6 | Search for a title, open a book with copies available, **Request to borrow** | *Requested — waiting for a librarian. Expires …*; Search shows one fewer copy available; My Loans lists it under **Requests** | ☐ | ☐ | ☐ |
+| 7 | In the admin console, **Approve** that request; keep the book open | Within 30 seconds: *Borrowed — see My Loans…*, and the loan is in My Loans | ☐ | ☐ | ☐ |
+| 8 | **Request to borrow** another book; in the console, **Decline** it with a reason | Within 30 seconds: *Your request was declined: …* and **Request again** | ☐ | ☐ | ☐ |
+| 9 | **Renew** a renewable loan | *Renewed — now due …* | ☐ | ☐ | ☐ |
+| 10 | **Return** a loan → confirm | Toast *Returned.*; the loan leaves the list | ☐ | ☐ | ☐ |
+| 11 | Open *Operating System Concepts* (no copies free) → **Join Waitlist**; go back, then open it again | *You're #3 in line.* is still there; My Loans lists it under **Waitlist** | ☐ | ☐ | ☐ |
+| 12 | On that book, **Leave waitlist** | Toast *You've left the waitlist.*; *Join Waitlist* is back | ☐ | ☐ | ☐ |
+| 13 | **Held copy**: on another client, log in as `seed.student1@thapar.edu` (same password), request *The Midnight Library*, and approve it in the console. As Aditi, join its waitlist. Then return it as the other student | Aditi's My Loans shows *Held for you until …* and the book offers **Request to borrow**; the other student sees *Every copy on the shelf is held for a student on the waitlist.* | ☐ | ☐ | ☐ |
+| 14 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
+| 15 | Bookings → New → Rooms → Tomorrow → pick a slot → Continue → **Send request**; then approve it in the console | *Request sent*; My Bookings shows *Waiting for a librarian · held until …*, then within 30 seconds *check-in opens at the start time* | ☐ | ☐ | ☐ |
+| 16 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
+| 17 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In** | *Enjoy your session.* | ☐ | ☐ | ☐ |
+| 18 | **Cancel** a booking → confirm | Toast *Booking canceled.*; it leaves the list | ☐ | ☐ | ☐ |
+| 19 | Profile | Reliability ring at 50, *Building back up*; **How reliability works** opens a dialog | ☐ | ☐ | ☐ |
+| 20 | Home → Recommended for You → See all | A list of books | ☐ | ☐ | ☐ |
+| 21 | **Relaunch** (web: reload the page; Windows: close the window and run again; Android: swipe it away from Recents and reopen) | Splash, then Home, **without logging in** | ☐ | ☐ | ☐ |
+| 22 | **Expired session**: restart the backend with a throwaway secret (below), then type in Search | Back on Log in with *Your session has expired. Please log in again.* | ☐ | ☐ | ☐ |
+| 23 | Restart the backend normally and log in again | Home | ☐ | ☐ | ☐ |
 
-**Steps 11 and 13 need two clients.** A held copy needs a second student
+**Steps 13 and 16 need two clients.** A held copy needs a second student
 to return a book you're queued for. And the picker greys out slots that are
 already taken, so a conflict only happens when someone else books the slot
 while you're on the confirm screen. A second browser tab works for both.
 
-**Step 19** invalidates every issued token without touching any file. The
+**Steps 7, 8, 13 and 15 need the admin console** (`../admin`), logged in with an
+admin account. In step 13, if the other student gets *You already have this book
+borrowed.* (the seed history can already have lent them the title), use another
+title with one free copy.
+
+**Step 22** invalidates every issued token without touching any file. The
 backend loads `.env` with `dotenv`, which never overrides a variable that's
 already set:
 
 ```powershell
 # in backend/, after stopping the running server
 $env:JWT_SECRET = 'acceptance-throwaway'; npm run dev
-# step 20: stop it, then
+# step 23: stop it, then
 Remove-Item Env:JWT_SECRET; npm run dev
 ```
 
@@ -274,7 +293,8 @@ lib/
 ├── widgets/                   # shared widgets (covers, skeletons, empty/error states)
 └── features/
     ├── auth/                  # login/register, session restore, splash
-    ├── catalog/               # search, book detail, borrow
+    ├── catalog/               # search, book detail, borrow requests
+    ├── borrow_requests/       # borrow requests: repository and controller
     ├── waitlist/              # join/leave, place in line, copies held for you
     ├── loans/                 # active loans, renew, return
     ├── bookings/              # booking flow, conflicts, check-in, time slots
@@ -287,7 +307,7 @@ test/
 ├── fixtures/                  # captured real backend responses
 ├── models/                    # JSON parsing against the fixtures
 ├── core/ · features/          # unit + widget tests, mirroring lib/
-└── e2e_smoke_test.dart        # login → borrow → booking conflict, on mocks
+└── e2e_smoke_test.dart        # login → request → booking conflict, on mocks
 tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
 ```
 
@@ -296,6 +316,9 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
 - **No notifications.** When a copy comes back for you, it's held for 48 hours.
   The app shows the hold in My Loans and on the book, but nothing tells you
   while the app is closed. The backend has no notification channel yet.
+- **A librarian's answer to a request arrives by re-check.** While a request is
+  pending and its screen is open, the app asks the server every 30 seconds;
+  nothing tells you while the app is closed. Push notifications are planned.
 - **Search sends a request on every keystroke**, with no debounce.
 - **The app is student-only.** It receives the user's `role`, but librarian
   tools are planned as a separate web console.

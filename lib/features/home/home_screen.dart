@@ -2,12 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../models/resource_booking.dart';
 import '../../widgets/book_cover.dart';
 import '../auth/auth_controller.dart';
 import '../bookings/bookings_controller.dart';
 import '../catalog/catalog_providers.dart';
 import '../loans/loans_controller.dart';
 import '../recommendations/recommendation_repository.dart';
+
+const _confirmed = {BookingStatus.upcomingFar, BookingStatus.inWindow, BookingStatus.checkedIn};
 
 String _initials(String name) {
   final parts = name.trim().split(RegExp(r'\s+'));
@@ -25,6 +28,8 @@ class HomeScreen extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     final loans = ref.watch(loansControllerProvider).value ?? [];
     final bookings = ref.watch(bookingsControllerProvider).value ?? [];
+    // A room request a librarian hasn't approved (or has declined) isn't a booking yet.
+    final upcoming = bookings.where((b) => _confirmed.contains(b.status)).firstOrNull;
     final recs = ref.watch(recommendationsProvider).value;
 
     final firstName = (auth.user?.name ?? '').split(' ').first;
@@ -101,14 +106,14 @@ class HomeScreen extends ConsumerWidget {
                 TextButton(onPressed: () => context.go('/bookings'), child: const Text('See all')),
               ],
             ),
-            if (bookings.isEmpty)
+            if (upcoming == null)
               const Text('No bookings yet — reserve a seat or room to get started.')
             else
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.event),
-                  title: Text(bookings.first.resourceName),
-                  subtitle: Text(bookings.first.timeSlot),
+                  title: Text(upcoming.resourceName),
+                  subtitle: Text(upcoming.timeSlot),
                 ),
               ),
             const SizedBox(height: 20),

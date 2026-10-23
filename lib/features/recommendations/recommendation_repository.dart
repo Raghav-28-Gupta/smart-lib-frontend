@@ -58,9 +58,10 @@ class MockRecommendationRepository implements RecommendationRepository {
 final recommendationRepositoryProvider =
     Provider<RecommendationRepository>((ref) => HttpRecommendationRepository(ref.watch(apiClientProvider)));
 
-// No longer watches the loans list: the server computes the note itself, and
-// borrowing refreshes this explicitly (book_detail_screen.dart). Keyed on the
-// user so it never shows one user's picks to the next.
+// No longer watches the loans list: the server computes the note itself.
+// Auto-disposed, so it refetches when Home is shown again; a request creates no
+// loan until a librarian approves it, so nothing refreshes it explicitly. Keyed
+// on the user so it never shows one user's picks to the next.
 final recommendationsProvider = FutureProvider.autoDispose((ref) async {
   ref.watch(authControllerProvider.select((s) => s.user?.id));
   return ref.watch(recommendationRepositoryProvider).recommendations();

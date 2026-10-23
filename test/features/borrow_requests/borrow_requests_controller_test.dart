@@ -7,8 +7,22 @@ import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_request_repository.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_requests_controller.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
+import 'package:smartlib_frontend/features/loans/loan_repository.dart';
+import 'package:smartlib_frontend/features/loans/loans_controller.dart';
 import 'package:smartlib_frontend/models/borrow_request.dart';
+import 'package:smartlib_frontend/models/loan.dart';
 import '../../support/mock_overrides.dart';
+
+/// The mock, counting how often the loans are fetched.
+class _CountingLoans extends MockLoanRepository {
+  int fetches = 0;
+
+  @override
+  Future<List<Loan>> activeLoans() {
+    fetches++;
+    return super.activeLoans();
+  }
+}
 
 /// The mock, counting calls, with failures, stalls and server answers on demand.
 class _ScriptedRequests extends MockBorrowRequestRepository {
@@ -98,6 +112,25 @@ void main() {
     );
     await container.read(borrowRequestsControllerProvider.future);
     expect(repo.fetches, 2);
+  });
+
+  test('a cancel the server says is no longer pending also refetches the loans -- a librarian may have approved it', () async {
+    final repo = _ScriptedRequests(requests: [_request('br-1', 'b12', BorrowRequestStatus.pending)]);
+    final loans = _CountingLoans();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(borrowRequests: repo, loans: loans));
+    addTearDown(container.dispose);
+    await container.read(borrowRequestsControllerProvider.future);
+    await container.read(loansControllerProvider.future);
+    final before = loans.fetches;
+
+    // Approved while the student was away: the mock drops it from the list, so
+    // cancelling it is refused like the server's 409 -- and a loan now exists.
+    repo.decide('b12', BorrowRequestStatus.approved);
+    await expectLater(
+      container.read(borrowRequestsControllerProvider.notifier).cancel('br-1'),
+      throwsA(isA<ConflictException>()),
+    );
+    expect(loans.fetches, before + 1);
   });
 
   test('cancelling removes the request', () async {
