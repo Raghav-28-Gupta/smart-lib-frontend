@@ -116,4 +116,31 @@ void main() {
     expect(find.text('Booked'), findsNothing);
     await tester.pump(const Duration(seconds: 3));
   });
+
+  testWidgets('booking a room sends a request, and says how long the slot is held', (tester) async {
+    await tester.pumpWidget(ProviderScope(overrides: mockRepositoryOverrides(), child: MaterialApp(
+      theme: buildSmartLibTheme(), home: const BookingFlowScreen(),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rooms'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dateChip-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('9:00 AM').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Confirm your request'), findsOneWidget);
+    expect(
+      find.text('A librarian approves room bookings. If none does before your 15-minute grace period ends, the request expires.'),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Send request'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Request sent'), findsOneWidget);
+    expect(find.text("We'll hold the slot until tomorrow, 9:15 AM. Check My Bookings for the librarian's answer."), findsOneWidget);
+    expect(find.text('View My Bookings'), findsOneWidget);
+  });
 }
