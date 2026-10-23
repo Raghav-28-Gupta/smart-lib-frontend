@@ -9,7 +9,8 @@ part of 'reservation.dart';
 Reservation _$ReservationFromJson(Map<String, dynamic> json) => Reservation(
       id: json['id'] as String,
       bookId: json['bookId'] as String,
-      status: $enumDecode(_$ReservationStatusEnumMap, json['status']),
+      status: $enumDecode(_$ReservationStatusEnumMap, json['status'],
+          unknownValue: ReservationStatus.unknown),
       queuePosition: (json['queuePosition'] as num?)?.toInt(),
       claimExpiresAt: localDateTimeOrNull(json['claimExpiresAt'] as String?),
     );
@@ -17,4 +18,5 @@ Reservation _$ReservationFromJson(Map<String, dynamic> json) => Reservation(
 const _$ReservationStatusEnumMap = {
   ReservationStatus.waiting: 'waiting',
   ReservationStatus.held: 'fulfilled',
+  ReservationStatus.unknown: 'unknown',
 };

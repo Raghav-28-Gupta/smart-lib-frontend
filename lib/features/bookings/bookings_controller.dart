@@ -54,6 +54,17 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
     state = AsyncValue.data(current.where((b) => b.id != id).toList());
   }
 
+  /// The 30-second re-check while a room request waits: shows what the server
+  /// says now, and keeps the list if the request fails.
+  Future<void> refreshQuietly() async {
+    try {
+      final fresh = await ref.read(bookingRepositoryProvider).myBookings();
+      state = AsyncValue.data(fresh);
+    } on ApiException {
+      // Keep what's shown; the next re-check tries again.
+    }
+  }
+
   // The caller reports the failure; this keeps the list true to the server.
   void _refetchIfStale(ApiException e) {
     if (e.meansStaleState) ref.invalidateSelf();

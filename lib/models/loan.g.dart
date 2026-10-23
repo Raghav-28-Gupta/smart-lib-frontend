@@ -10,7 +10,8 @@ Loan _$LoanFromJson(Map<String, dynamic> json) => Loan(
       id: json['id'] as String,
       bookId: json['bookId'] as String,
       dueDate: localDateTime(json['dueAt'] as String),
-      status: $enumDecode(_$LoanStatusEnumMap, json['frontendStatus']),
+      status: $enumDecode(_$LoanStatusEnumMap, json['frontendStatus'],
+          unknownValue: LoanStatus.unknown),
       fineAmount: (json['fineAmount'] as num).toDouble(),
       canRenew: json['canRenew'] as bool,
       blockedReason: json['blockedReason'] as String?,
@@ -19,4 +20,5 @@ Loan _$LoanFromJson(Map<String, dynamic> json) => Loan(
 const _$LoanStatusEnumMap = {
   LoanStatus.normal: 'normal',
   LoanStatus.overdue: 'overdue',
+  LoanStatus.unknown: 'unknown',
 };

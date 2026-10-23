@@ -17,9 +17,9 @@ const kGenres = [
   'Non-fiction',
 ];
 
-// No borrow() here: borrowing creates a loan, which LoanRepository.createLoan
-// owns. Having both made the detail screen call POST /loans twice. Likewise,
-// joining the waitlist belongs to WaitlistRepository.
+// No borrow() here: borrowing is a request a librarian approves, which
+// BorrowRequestRepository owns. Likewise, joining the waitlist belongs to
+// WaitlistRepository.
 abstract class BookRepository {
   Future<List<Book>> search({String query = '', String genre = 'All'});
 

@@ -31,4 +31,9 @@ void main() {
     expect(r.status, ReservationStatus.waiting);
     expect(r.queuePosition, 1);
   });
+
+  test("a status this version doesn't know falls back to unknown", () {
+    final raw = {...(fixture('reservations_me') as List).first as Map<String, dynamic>, 'status': 'paused'};
+    expect(Reservation.fromJson(raw).status, ReservationStatus.unknown);
+  });
 }

@@ -19,8 +19,6 @@ class LoansController extends AsyncNotifier<List<Loan>> {
     return ref.read(loanRepositoryProvider).activeLoans();
   }
 
-  void prependLoan(Loan loan) => state = AsyncValue.data([loan, ...(state.value ?? [])]);
-
   Future<void> renew(String loanId) async {
     if (!_renewing.add(loanId)) return;
     try {
@@ -46,6 +44,17 @@ class LoansController extends AsyncNotifier<List<Loan>> {
     }
     final current = state.value ?? [];
     state = AsyncValue.data(current.where((l) => l.id != loanId).toList());
+  }
+
+  /// The 30-second re-check while a request waits (an approval adds a loan):
+  /// shows what the server says now, and keeps the list if the request fails.
+  Future<void> refreshQuietly() async {
+    try {
+      final fresh = await ref.read(loanRepositoryProvider).activeLoans();
+      state = AsyncValue.data(fresh);
+    } on ApiException {
+      // Keep what's shown; the next re-check tries again.
+    }
   }
 
   // The caller reports the failure; this keeps the list true to the server.

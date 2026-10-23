@@ -7,7 +7,7 @@ import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'support/mock_overrides.dart';
 
 void main() {
-  testWidgets('login, borrow a book, recover from a booking conflict, see the booking land', (tester) async {
+  testWidgets('login, request a book, recover from a booking conflict, see the booking land', (tester) async {
     final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
     await tester.pumpWidget(UncontrolledProviderScope(
@@ -25,23 +25,24 @@ void main() {
     await tester.tap(find.text('Log in').last);
     await tester.pumpAndSettle();
 
-    // Home -> Search -> open a book that's currently available -> borrow it.
+    // Home -> Search -> open a book that's currently available -> request it.
     await tester.tap(find.text('Search').first);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Atomic Habits');
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ListTile, 'Atomic Habits'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Borrow this copy'));
+    await tester.tap(find.text('Request to borrow'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Borrowed'), findsOneWidget);
+    expect(find.textContaining('Requested — waiting for a librarian'), findsOneWidget);
 
-    // Loans now shows it.
+    // Loans lists it under Requests.
     await tester.pageBack();
     await tester.pumpAndSettle();
     await tester.tap(find.text('Loans').first);
     await tester.pumpAndSettle();
     expect(find.text('Atomic Habits'), findsOneWidget);
+    expect(find.textContaining('Waiting for a librarian'), findsOneWidget);
 
     // Start a new booking, pick the scripted conflict slot, confirm.
     await tester.tap(find.text('Bookings').first);

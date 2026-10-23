@@ -49,10 +49,8 @@ void main() {
     expect(renewed.bookId, 'b1');
   });
 
-  test('parses the loan returned by POST /loans', () {
-    final created = Loan.fromJson(fixture('loan_created') as Map<String, dynamic>);
-    expect(created.bookId, 'b12');
-    expect(created.status, LoanStatus.normal);
-    expect(created.fineAmount, 0.0);
+  test("a status this version doesn't know falls back to unknown", () {
+    final raw = {...(fixture('loans_me') as List).first as Map<String, dynamic>, 'frontendStatus': 'lost'};
+    expect(Loan.fromJson(raw).status, LoanStatus.unknown);
   });
 }

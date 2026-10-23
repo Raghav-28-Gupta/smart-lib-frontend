@@ -3,7 +3,8 @@ import 'json_converters.dart';
 
 part 'loan.g.dart';
 
-enum LoanStatus { normal, overdue }
+/// [unknown] stands in for a status this version doesn't know, so one new value never fails the whole list.
+enum LoanStatus { normal, overdue, unknown }
 
 @JsonSerializable(createToJson: false)
 class Loan {
@@ -29,7 +30,7 @@ class Loan {
   // The backend sends its raw DB status ('active'/'returned') as `status` and
   // the UI-facing one as `frontendStatus`; only the latter maps onto this
   // enum. Overdue is computed server-side at read time, never persisted.
-  @JsonKey(name: 'frontendStatus')
+  @JsonKey(name: 'frontendStatus', unknownEnumValue: LoanStatus.unknown)
   final LoanStatus status;
 
   final double fineAmount;

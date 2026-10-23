@@ -8,7 +8,6 @@ abstract class LoanRepository {
   Future<List<Loan>> activeLoans();
   Future<Loan> renew(String loanId);
   Future<void> returnLoan(String loanId);
-  Future<Loan> createLoan(String bookId);
 }
 
 class HttpLoanRepository implements LoanRepository {
@@ -20,12 +19,6 @@ class HttpLoanRepository implements LoanRepository {
   Future<List<Loan>> activeLoans() async {
     final res = await guardApi(() => _dio.get<List<dynamic>>('/loans/me'));
     return res.data!.map((j) => Loan.fromJson(j as Map<String, dynamic>)).toList();
-  }
-
-  @override
-  Future<Loan> createLoan(String bookId) async {
-    final res = await guardApi(() => _dio.post<Map<String, dynamic>>('/loans', data: {'bookId': bookId}));
-    return Loan.fromJson(res.data!);
   }
 
   @override
@@ -71,18 +64,6 @@ class MockLoanRepository implements LoanRepository {
   @override
   Future<void> returnLoan(String loanId) async {
     _loans.removeWhere((l) => l.id == loanId);
-  }
-
-  @override
-  Future<Loan> createLoan(String bookId) async {
-    final loan = Loan(
-      id: 'loan-$bookId-${DateTime.now().microsecondsSinceEpoch}', bookId: bookId,
-      dueDate: DateTime.now().add(const Duration(days: 14)), status: LoanStatus.normal,
-      fineAmount: 0, canRenew: true,
-    );
-    _loans.removeWhere((l) => l.bookId == bookId);
-    _loans.insert(0, loan);
-    return loan;
   }
 }
 

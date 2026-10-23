@@ -1,13 +1,15 @@
 {
-  "id": "fd20f14d-1e8e-4ca2-9372-26c47c111e9a",
+  "id": "034fa413-8f02-40ba-b1c6-db691454e37b",
   "userId": "u1",
   "resourceId": "s3",
   "resourceName": "Silent Zone · Desk 3",
   "resourceType": "seat",
-  "startTime": "2026-10-11T04:30:00.000Z",
-  "endTime": "2026-10-11T05:30:00.000Z",
+  "startTime": "2026-10-24T04:30:00.000Z",
+  "endTime": "2026-10-24T05:30:00.000Z",
   "status": "booked",
   "frontendStatus": "upcomingFar",
   "graceRemainingSeconds": 0,
-  "checkedInAt": null
+  "checkedInAt": null,
+  "expiresAt": null,
+  "declineReason": null
 }

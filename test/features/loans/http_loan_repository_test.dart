@@ -27,15 +27,6 @@ void main() {
     expect(result.singleWhere((l) => l.bookId == 'b4').status, LoanStatus.overdue);
   });
 
-  test('createLoan borrows the book and returns the new loan', () async {
-    final (loans, stub) = repo((_) => StubResponse(201, fixture('loan_created')));
-    final loan = await loans.createLoan('b12');
-    expect(stub.requests.single.method, 'POST');
-    expect(stub.requests.single.path, '/loans');
-    expect(stub.requests.single.data, {'bookId': 'b12'});
-    expect(loan.bookId, 'b12');
-  });
-
   test('renew posts to the loan and returns it as the server sent it', () async {
     final (loans, stub) = repo((_) => StubResponse(200, fixture('loan_renewed')));
     final loan = await loans.renew('loan-1');

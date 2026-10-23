@@ -3,7 +3,7 @@ import 'json_converters.dart';
 
 part 'reservation.g.dart';
 
-/// GET /reservations/me only returns live entries, so these are the only two.
+/// GET /reservations/me only returns live entries, so these are the only two it sends today.
 enum ReservationStatus {
   @JsonValue('waiting')
   waiting,
@@ -12,6 +12,9 @@ enum ReservationStatus {
   /// student until [Reservation.claimExpiresAt], then passes to the next.
   @JsonValue('fulfilled')
   held,
+
+  /// A status this version doesn't know; one new value never fails the list.
+  unknown,
 }
 
 /// A student's place on a book's waitlist.
@@ -29,6 +32,8 @@ class Reservation {
 
   final String id;
   final String bookId;
+
+  @JsonKey(unknownEnumValue: ReservationStatus.unknown)
   final ReservationStatus status;
 
   /// 1 = next in line. Null once a copy is held.

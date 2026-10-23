@@ -8,8 +8,11 @@ part 'resource_booking.g.dart';
 
 /// Wire values are the backend's `frontendStatus` strings, which already use
 /// these exact names. 'released' is computed server-side at read time (grace
-/// window elapsed without check-in) -- it's never persisted.
-enum BookingStatus { upcomingFar, inWindow, checkedIn, released }
+/// window elapsed without check-in) -- it's never persisted. A room booking
+/// is 'requested' until a librarian decides; 'declined' and 'expired' are its
+/// two unhappy endings. [unknown] stands in for a status this version doesn't
+/// know, so one new value never fails the whole list.
+enum BookingStatus { upcomingFar, inWindow, checkedIn, released, requested, declined, expired, unknown }
 
 /// How long after its start a booking can still be checked into. Mirrors
 /// GRACE_PERIOD_MINUTES in backend/src/config/constants.ts.
@@ -29,6 +32,8 @@ class ResourceBooking {
     required this.endTime,
     required this.status,
     this.graceRemainingSeconds = 0,
+    this.expiresAt,
+    this.declineReason,
   });
 
   factory ResourceBooking.fromJson(Map<String, dynamic> json) => _$ResourceBookingFromJson(json);
@@ -47,10 +52,17 @@ class ResourceBooking {
 
   // `status` on the wire is the raw DB value ('booked', 'checked_in', ...);
   // the UI's four states come from `frontendStatus`.
-  @JsonKey(name: 'frontendStatus')
+  @JsonKey(name: 'frontendStatus', unknownEnumValue: BookingStatus.unknown)
   final BookingStatus status;
 
   final int graceRemainingSeconds;
+
+  /// A room request's deadline: its start plus the grace period. Null otherwise.
+  @JsonKey(fromJson: localDateTimeOrNull)
+  final DateTime? expiresAt;
+
+  /// Set only on a declined request, and only if the librarian gave one.
+  final String? declineReason;
 
   /// '3:00 – 5:00 PM'. Derived from the real times rather than stored, so it
   /// can't disagree with them -- and it renders bookings that don't start
@@ -96,5 +108,7 @@ class ResourceBooking {
         status: status ?? this.status,
         graceRemainingSeconds:
             graceRemainingSeconds ?? this.graceRemainingSeconds,
+        expiresAt: expiresAt,
+        declineReason: declineReason,
       );
 }

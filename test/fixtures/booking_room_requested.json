@@ -1,0 +1,15 @@
+{
+  "id": "8969522e-178d-441a-b118-af9044ea95fd",
+  "userId": "u1",
+  "resourceId": "r1",
+  "resourceName": "Group Room 201 · 4 seats",
+  "resourceType": "room",
+  "startTime": "2026-10-24T08:30:00.000Z",
+  "endTime": "2026-10-24T09:30:00.000Z",
+  "status": "requested",
+  "frontendStatus": "requested",
+  "graceRemainingSeconds": 0,
+  "checkedInAt": null,
+  "expiresAt": "2026-10-24T08:45:00.000Z",
+  "declineReason": null
+}

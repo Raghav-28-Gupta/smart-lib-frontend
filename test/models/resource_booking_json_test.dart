@@ -50,4 +50,28 @@ void main() {
     );
     expect(b.timeSlot, '3:00 – 5:00 PM');
   });
+
+  test('parses room requests: requested with its hold deadline, declined, and expired', () {
+    final bookings = (fixture('bookings_me_requests') as List)
+        .map((j) => ResourceBooking.fromJson(j as Map<String, dynamic>))
+        .toList();
+    final requested = bookings.singleWhere((b) => b.status == BookingStatus.requested);
+    expect(requested.expiresAt, requested.startTime.add(kCheckInGracePeriod));
+    final declined = bookings.singleWhere((b) => b.status == BookingStatus.declined);
+    expect(declined.declineReason, isNull); // declined without a reason
+    expect(bookings.where((b) => b.status == BookingStatus.expired), hasLength(1));
+  });
+
+  test('a new room booking comes back as a request, held until the grace period ends', () {
+    final b = ResourceBooking.fromJson(fixture('booking_room_requested') as Map<String, dynamic>);
+    expect(b.type, ResourceType.room);
+    expect(b.status, BookingStatus.requested);
+    expect(b.expiresAt!.isUtc, false);
+    expect(b.expiresAt, b.startTime.add(kCheckInGracePeriod));
+  });
+
+  test("a status this version doesn't know falls back to unknown", () {
+    final raw = {...(fixture('bookings_me') as List).first as Map<String, dynamic>, 'frontendStatus': 'paused'};
+    expect(ResourceBooking.fromJson(raw).status, BookingStatus.unknown);
+  });
 }
