@@ -137,8 +137,8 @@ SMARTLIB_ADMIN_EMAIL=you@thapar.edu SMARTLIB_ADMIN_PASSWORD_FILE=/path/to/passwo
 cd ../backend && npm run seed                   # restore the demo data
 ```
 
-The capture has an admin approve and decline requests, so it needs an admin
-account (`cd ../backend && npm run create-admin`). Its password is read from a
+The capture has an admin approve and decline requests and cancel and move a
+booking, so it needs an admin account (`cd ../backend && npm run create-admin`). Its password is read from a
 file so it never lands in your shell history. In PowerShell, set the two
 variables first:
 
@@ -319,6 +319,15 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
 - **A librarian's answer to a request arrives by re-check.** While a request is
   pending and its screen is open, the app asks the server every 30 seconds;
   nothing tells you while the app is closed. Push notifications are planned.
+- **A library cancel or move arrives when you open My Bookings.** When a
+  librarian cancels a booking or moves it to another seat or room, My Bookings
+  shows *Cancelled by the library* or *Moved from … by the library* the next
+  time you open it: each time its tab is selected, the screen does one quiet
+  re-check of the list (a failed re-check keeps the list you had). While you
+  stay on another screen, or on My Bookings itself, nothing updates, apart from
+  the 30-second re-check while a room request is pending. Tapping the tab you
+  are already on does not re-check. The server lists these notices for 7 days.
+  There are no push notifications yet.
 - **Search sends a request on every keystroke**, with no debounce.
 - **The app is student-only.** It receives the user's `role`, but librarian
   tools are planned as a separate web console.

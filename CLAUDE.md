@@ -78,6 +78,22 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   (`lib/widgets/pending_refresh.dart`). It re-checks on open and every 30 s
   through the controllers' `refreshQuietly()`, which keeps the current list
   when the network fails.
+- **Outcomes the student didn't cause arrive when My Bookings is opened.** A
+  librarian's cancel (`BookingStatus.cancelledByLibrary`, with `cancelReason`)
+  and move (`ResourceBooking.movedFrom`, the old resource's name) show because
+  `BookingsScreen` makes one `refreshQuietly()` after its first frame
+  (`_refreshOnOpen`); the list was usually loaded earlier, on Home. The tabs are
+  a plain `ShellRoute` and each tab visit builds a fresh screen, so this runs on
+  every visit; re-tapping the open tab does not (`context.go` to the same
+  location is a no-op). It is skipped while the list is still loading, since
+  that load is itself fresh. `refreshQuietly()` joins a fetch already in flight,
+  so the open plus `PendingRefresh`'s own on-open tick fetch once. Beyond that
+  only a pending request is polled (every 30 s); nothing is pushed while the
+  student is on another screen, and there is no push notification. The server
+  lists these outcomes for 7 days. `cancelledByLibrary` has no buttons and sits
+  outside `_progress`, so `advancedTo` never changes it. A new `BookingStatus`
+  goes into `_statusLines` (an exhaustive switch), and a new `ResourceBooking`
+  field must be carried through `copyWith`.
 - **Toasts are mounted at the app root** (`MaterialApp.router(builder: withToasts)`)
   so pushed routes such as book detail and the booking flow can show them.
   `ConfirmDialogHost` lives in the tab shell.

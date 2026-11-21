@@ -54,9 +54,16 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
     state = AsyncValue.data(current.where((b) => b.id != id).toList());
   }
 
-  /// The 30-second re-check while a room request waits: shows what the server
-  /// says now, and keeps the list if the request fails.
-  Future<void> refreshQuietly() async {
+  Future<void>? _refreshing;
+
+  /// The re-check when My Bookings opens and every 30 seconds while a room
+  /// request waits: shows what the server says now, and keeps the list if the
+  /// request fails. A call made while another is in flight joins it, so a screen
+  /// that opens with a request pending (which asks twice, once for the open and
+  /// once for the request) fetches once.
+  Future<void> refreshQuietly() => _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+
+  Future<void> _refresh() async {
     try {
       final fresh = await ref.read(bookingRepositoryProvider).myBookings();
       state = AsyncValue.data(fresh);

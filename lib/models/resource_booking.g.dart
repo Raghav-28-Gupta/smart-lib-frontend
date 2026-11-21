@@ -19,6 +19,8 @@ ResourceBooking _$ResourceBookingFromJson(Map<String, dynamic> json) =>
           (json['graceRemainingSeconds'] as num?)?.toInt() ?? 0,
       expiresAt: localDateTimeOrNull(json['expiresAt'] as String?),
       declineReason: json['declineReason'] as String?,
+      cancelReason: json['cancelReason'] as String?,
+      movedFrom: json['movedFrom'] as String?,
     );
 
 const _$ResourceTypeEnumMap = {
@@ -34,5 +36,6 @@ const _$BookingStatusEnumMap = {
   BookingStatus.requested: 'requested',
   BookingStatus.declined: 'declined',
   BookingStatus.expired: 'expired',
+  BookingStatus.cancelledByLibrary: 'cancelledByLibrary',
   BookingStatus.unknown: 'unknown',
 };

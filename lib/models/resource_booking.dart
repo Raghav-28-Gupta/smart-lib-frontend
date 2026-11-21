@@ -10,16 +10,18 @@ part 'resource_booking.g.dart';
 /// these exact names. 'released' is computed server-side at read time (grace
 /// window elapsed without check-in) -- it's never persisted. A room booking
 /// is 'requested' until a librarian decides; 'declined' and 'expired' are its
-/// two unhappy endings. [unknown] stands in for a status this version doesn't
-/// know, so one new value never fails the whole list.
-enum BookingStatus { upcomingFar, inWindow, checkedIn, released, requested, declined, expired, unknown }
+/// two unhappy endings. [cancelledByLibrary] is a booking a librarian cancelled
+/// (the student's own cancel never appears in the list). [unknown] stands in
+/// for a status this version doesn't know, so one new value never fails the
+/// whole list.
+enum BookingStatus { upcomingFar, inWindow, checkedIn, released, requested, declined, expired, cancelledByLibrary, unknown }
 
 /// How long after its start a booking can still be checked into. Mirrors
 /// GRACE_PERIOD_MINUTES in backend/src/config/constants.ts.
 const kCheckInGracePeriod = Duration(minutes: 15);
 
-// Order the time-driven statuses move through. checkedIn is outside it:
-// only a check-in reaches it, never the clock.
+// Order the time-driven statuses move through. checkedIn and cancelledByLibrary
+// are outside it: only a check-in or a librarian reaches them, never the clock.
 const _progress = [BookingStatus.upcomingFar, BookingStatus.inWindow, BookingStatus.released];
 
 @JsonSerializable(createToJson: false)
@@ -34,6 +36,8 @@ class ResourceBooking {
     this.graceRemainingSeconds = 0,
     this.expiresAt,
     this.declineReason,
+    this.cancelReason,
+    this.movedFrom,
   });
 
   factory ResourceBooking.fromJson(Map<String, dynamic> json) => _$ResourceBookingFromJson(json);
@@ -63,6 +67,14 @@ class ResourceBooking {
 
   /// Set only on a declined request, and only if the librarian gave one.
   final String? declineReason;
+
+  /// Set only on a booking the library cancelled, and only if the librarian
+  /// gave a reason.
+  final String? cancelReason;
+
+  /// The name of the resource a librarian moved this booking off. The server
+  /// sends it for a week after the move and null otherwise.
+  final String? movedFrom;
 
   /// '3:00 – 5:00 PM'. Derived from the real times rather than stored, so it
   /// can't disagree with them -- and it renders bookings that don't start
@@ -110,5 +122,7 @@ class ResourceBooking {
             graceRemainingSeconds ?? this.graceRemainingSeconds,
         expiresAt: expiresAt,
         declineReason: declineReason,
+        cancelReason: cancelReason,
+        movedFrom: movedFrom,
       );
 }

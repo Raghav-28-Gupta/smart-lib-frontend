@@ -25,7 +25,18 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(uiControllerProvider.notifier).onConfirmCancelBooking =
           (id) => ref.read(bookingsControllerProvider.notifier).cancel(id);
+      _refreshOnOpen();
     });
+  }
+
+  /// The list was loaded when the student first needed it (usually on Home), so
+  /// it can predate a librarian's cancel or move. Each time this screen opens it
+  /// asks the server once, quietly: a failure keeps the list on screen. A list
+  /// still loading is itself that fresh fetch. Each visit to the tab builds a
+  /// new screen (the tabs are a plain ShellRoute), so this runs on every visit.
+  void _refreshOnOpen() {
+    if (!mounted || ref.read(bookingsControllerProvider).isLoading) return;
+    ref.read(bookingsControllerProvider.notifier).refreshQuietly();
   }
 
   String _startsIn(DateTime start) {
@@ -57,6 +68,10 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
             Text(b.declineReason == null ? 'Declined by the library' : 'Declined — ${b.declineReason}'),
           ],
         BookingStatus.expired => [const Text('Expired — no librarian approved it in time')],
+        // Nothing to act on: no Check In, and no Cancel for a booking that is already cancelled.
+        BookingStatus.cancelledByLibrary => [
+            Text(b.cancelReason == null ? 'Cancelled by the library' : 'Cancelled by the library — ${b.cancelReason}'),
+          ],
         BookingStatus.upcomingFar => [
             // Matches the server: check-in opens AT the start time, for
             // kCheckInGracePeriod -- not before it.
@@ -118,6 +133,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(b.resourceName, style: Theme.of(context).textTheme.titleSmall),
                     Text(b.timeSlot),
+                    if (b.movedFrom != null) Text('Moved from ${b.movedFrom} by the library'),
                     ..._statusLines(b),
                   ]),
                 ));

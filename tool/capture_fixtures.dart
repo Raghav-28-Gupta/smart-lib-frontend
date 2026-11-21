@@ -6,10 +6,10 @@
 // changes.
 //
 // It MUTATES the dev database -- creates bookings and requests, checks in,
-// renews a loan, and has an admin decide requests -- so run it against a
-// freshly seeded backend and re-seed afterwards. The decisions need an admin
-// account. Its password is read from a file, so it never appears in a command
-// line or a log:
+// renews a loan, and has an admin decide requests and cancel and move a
+// booking -- so run it against a freshly seeded backend and re-seed
+// afterwards. The admin steps need an admin account. Its password is read from
+// a file, so it never appears in a command line or a log:
 //
 //   cd ../backend && npm run seed && npm run dev      # separate terminal
 //   SMARTLIB_ADMIN_EMAIL=dev.admin@thapar.edu \
@@ -239,6 +239,39 @@ Future<void> main() async {
   await _save('error_409', 'POST', '/borrow-requests', expect: 409, token: token, body: {'bookId': 'b1'});
   // What an older app version gets when it tries to borrow.
   await _save('loans_create_409', 'POST', '/loans', expect: 409, token: token, body: {'bookId': 'b1'});
+
+  // --- Library cancel and move ----------------------------------------------
+  // Last, so nothing captured above sees these bookings. Seats are booked at
+  // once, which is what a librarian can then manage. Two seat bookings made
+  // tomorrow, an hour apart: the admin cancels the first with a reason and moves
+  // the second to another seat, so the student's list shows a library-cancelled
+  // booking and a moved one. The seed's history may already hold a seat at that
+  // hour, so each booking takes the first seat that is free; the move takes
+  // whichever seat the server offers.
+  Future<String> bookFirstFreeSeat(int hour) async {
+    for (final seat in ['s1', 's2', 's3', 's4']) {
+      final r = await _call('POST', '/bookings', token: token, body: {
+        'resourceId': seat,
+        'startTime': _iso(tomorrow.add(Duration(hours: hour))),
+        'endTime': _iso(tomorrow.add(Duration(hours: hour + 1))),
+      });
+      if (r.status == 201) return _idOf(r);
+      _check('booking $seat at $hour:00 (409 means taken, so the next seat is tried)', r, 409);
+    }
+    throw StateError('No seat was free at $hour:00 tomorrow.');
+  }
+
+  final toCancel = await bookFirstFreeSeat(15);
+  _check('library cancel', await _call('POST', '/admin/bookings/$toCancel/cancel',
+      token: adminToken, body: {'reason': 'Room closed for maintenance'}), 200);
+  final toMove = await bookFirstFreeSeat(16);
+  final options = await _call('GET', '/admin/bookings/$toMove/reassign-options', token: adminToken);
+  _check('reassign options', options, 200);
+  final targets = (options.body! as List).cast<Map<String, dynamic>>();
+  if (targets.isEmpty) throw StateError('No seat is free to move the booking to.');
+  _check('library reassign', await _call('POST', '/admin/bookings/$toMove/reassign',
+      token: adminToken, body: {'resourceId': targets.first['id']}), 200);
+  await _save('bookings_me_library', 'GET', '/bookings/me', expect: 200, token: token);
 
   _client.close();
   stdout.writeln('Done. Now re-seed the backend: cd ../backend && npm run seed');
