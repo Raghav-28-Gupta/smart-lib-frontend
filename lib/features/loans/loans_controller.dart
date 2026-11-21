@@ -1,8 +1,10 @@
 // lib/features/loans/loans_controller.dart
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_exception.dart';
 import '../../models/loan.dart';
 import '../auth/auth_controller.dart';
+import '../fines/fines_controller.dart';
 import 'loan_repository.dart';
 
 class LoansController extends AsyncNotifier<List<Loan>> {
@@ -27,6 +29,7 @@ class LoansController extends AsyncNotifier<List<Loan>> {
       final renewed = (await ref.read(loanRepositoryProvider).renew(loanId)).copyWith(justRenewed: true);
       final current = state.value ?? [];
       state = AsyncValue.data([for (final l in current) if (l.id == loanId) renewed else l]);
+      _refreshFines();
     } on ApiException catch (e) {
       _refetchIfStale(e);
       rethrow;
@@ -44,11 +47,31 @@ class LoansController extends AsyncNotifier<List<Loan>> {
     }
     final current = state.value ?? [];
     state = AsyncValue.data(current.where((l) => l.id != loanId).toList());
+    _refreshFines();
   }
 
-  /// The 30-second re-check while a request waits (an approval adds a loan):
-  /// shows what the server says now, and keeps the list if the request fails.
-  Future<void> refreshQuietly() async {
+  /// Returning or renewing a late loan makes the server write the overdue fine,
+  /// so the Fines section asks again at once instead of waiting for My Loans to
+  /// be opened again. Not awaited, so the loan's own result doesn't wait on it
+  /// (`refreshQuietly` never throws, and keeps the fines on a network error).
+  /// Skipped when the fines were never read: My Loans loads them when it opens.
+  void _refreshFines() {
+    if (ref.exists(finesControllerProvider)) {
+      unawaited(ref.read(finesControllerProvider.notifier).refreshQuietly());
+    }
+  }
+
+  Future<void>? _refreshing;
+
+  /// The re-check when My Loans opens (a librarian may have marked a copy lost,
+  /// which drops the loan) and every 30 seconds while a request waits (an
+  /// approval adds a loan): shows what the server says now, and keeps the list if
+  /// the request fails. A call made while another is in flight joins it, so a
+  /// screen that opens with a request pending (which asks twice, once for the
+  /// open and once for the request) fetches once.
+  Future<void> refreshQuietly() => _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
+
+  Future<void> _refresh() async {
     try {
       final fresh = await ref.read(loanRepositoryProvider).activeLoans();
       state = AsyncValue.data(fresh);

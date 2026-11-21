@@ -15,6 +15,8 @@ import '../../widgets/loading_skeleton.dart';
 import '../../widgets/pending_refresh.dart';
 import '../borrow_requests/borrow_requests_controller.dart';
 import '../catalog/catalog_providers.dart';
+import '../fines/fines_controller.dart';
+import '../fines/fines_section.dart';
 import '../waitlist/waitlist_controller.dart';
 import 'loans_controller.dart';
 
@@ -36,7 +38,26 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(uiControllerProvider.notifier).onConfirmReturnLoan =
           (id) => ref.read(loansControllerProvider.notifier).returnLoan(id);
+      _refreshOnOpen();
     });
+  }
+
+  /// The lists were loaded when the student first needed them (the loans usually
+  /// on Home), so they can predate a payment, a waive or adjustment of a fine, or
+  /// a loan a librarian marked lost. Each time this screen opens it asks the
+  /// server once for each, quietly: a failure keeps what is on screen. A list
+  /// still loading is itself that fresh fetch, so only that one is skipped (the
+  /// fines are first loaded by this screen, while the loans were usually loaded
+  /// long before). Each visit to the tab builds a new screen (the tabs are a plain
+  /// ShellRoute), so this runs on every visit.
+  void _refreshOnOpen() {
+    if (!mounted) return;
+    if (!ref.read(loansControllerProvider).isLoading) {
+      ref.read(loansControllerProvider.notifier).refreshQuietly();
+    }
+    if (!ref.read(finesControllerProvider).isLoading) {
+      ref.read(finesControllerProvider.notifier).refreshQuietly();
+    }
   }
 
   String _dueLabel(DateTime d) => '${d.month}/${d.day}';
@@ -66,6 +87,9 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     final waitlist = [...?ref.watch(waitlistControllerProvider).value]
       ..sort((a, b) => a.status == b.status ? 0 : (a.status == ReservationStatus.held ? -1 : 1));
     final requests = (ref.watch(borrowRequestsControllerProvider).value ?? const <BorrowRequest>[]).latestPerBook();
+    // Known to be empty, not merely not loaded yet: a student with fines but
+    // nothing else must not see the empty state flash first.
+    final noFines = ref.watch(finesControllerProvider).value?.fines.isEmpty ?? false;
     return PendingRefresh(
       active: requests.anyPending,
       onTick: _recheck,
@@ -77,7 +101,7 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
           ]),
           error: (e, st) => ErrorState(title: "Couldn't load your loans", onRetry: () => ref.invalidate(loansControllerProvider)),
           data: (items) {
-            if (items.isEmpty && waitlist.isEmpty && requests.isEmpty) {
+            if (items.isEmpty && waitlist.isEmpty && requests.isEmpty && noFines) {
               return EmptyState(
                 icon: Icons.menu_book, title: 'No active loans',
                 body: 'Search the catalog to borrow your first book.',
@@ -86,8 +110,6 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
               );
             }
             final heading = Theme.of(context).textTheme.titleSmall;
-            // Headings only when there's more than the loans to tell apart.
-            final sectioned = requests.isNotEmpty || waitlist.isNotEmpty;
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -103,12 +125,13 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
                   for (final r in waitlist) _waitlistCard(context, r),
                   const SizedBox(height: 14),
                 ],
-                if (sectioned) ...[
-                  Text('On loan', style: heading),
-                  const SizedBox(height: 6),
-                  if (items.isEmpty) const Text('No active loans.'),
-                ],
+                // The Fines section is always below, so the loans are always headed.
+                Text('On loan', style: heading),
+                const SizedBox(height: 6),
+                if (items.isEmpty) const Text('No active loans.'),
                 for (final l in items) _loanCard(context, l),
+                const SizedBox(height: 14),
+                const FinesSection(),
               ],
             );
           },

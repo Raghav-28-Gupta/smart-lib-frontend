@@ -6,7 +6,7 @@
 // reads the real platform keystore through the token store.
 //
 // Apply `mockRepositoryOverrides()` to every container in a test instead: it
-// pins all eight repositories to the `Mock*` test doubles and the token store
+// pins all nine repositories to the `Mock*` test doubles and the token store
 // to memory. A function (not a const list) because each container needs its
 // own fresh Mock instances -- sharing one across tests would leak state
 // between them.
@@ -15,13 +15,14 @@ import 'package:smartlib_frontend/features/auth/auth_repository.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_request_repository.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
+import 'package:smartlib_frontend/features/fines/fine_repository.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/profile/profile_repository.dart';
 import 'package:smartlib_frontend/features/recommendations/recommendation_repository.dart';
 import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
 import 'fake_token_store.dart';
 
-/// Overrides all eight repository providers to (fresh, by default) mocks, and
+/// Overrides all nine repository providers to (fresh, by default) mocks, and
 /// the token store to in-memory persistence -- so no test reaches the network
 /// or a real platform keystore.
 ///
@@ -44,6 +45,7 @@ mockRepositoryOverrides({
   RecommendationRepository? recommendations,
   WaitlistRepository? waitlist,
   BorrowRequestRepository? borrowRequests,
+  FineRepository? fines,
   TokenStore? tokens,
 }) {
   return [
@@ -68,6 +70,7 @@ mockRepositoryOverrides({
     borrowRequestRepositoryProvider.overrideWith(
       (ref) => borrowRequests ?? MockBorrowRequestRepository(ref.watch(bookRepositoryProvider)),
     ),
+    fineRepositoryProvider.overrideWith((ref) => fines ?? MockFineRepository()),
     tokenStoreProvider.overrideWith((ref) {
       // A store passed in belongs to the test (which may pre-seed or inspect
       // it), so only dispose the ones created here.

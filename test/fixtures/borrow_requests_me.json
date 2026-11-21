@@ -1,21 +1,21 @@
 [
   {
-    "id": "c0d60cbb-aa4e-4558-a104-352856d94cb1",
+    "id": "2fd8737d-4b2c-4d23-a46e-40778ab9380f",
     "bookId": "b5",
     "bookTitle": "Data Structures and Algorithms in Java",
     "status": "declined",
-    "requestedAt": "2026-10-22T19:35:37.348Z",
-    "expiresAt": "2026-10-23T19:35:37.348Z",
-    "decidedAt": "2026-10-22T19:35:38.575Z",
+    "requestedAt": "2026-11-21T21:32:03.645Z",
+    "expiresAt": "2026-11-22T21:32:03.645Z",
+    "decidedAt": "2026-11-21T21:32:05.188Z",
     "declineReason": "This copy is set aside for a course reserve."
   },
   {
-    "id": "9972d62a-ba2b-495a-b8af-85b7ba8247fc",
+    "id": "c8152586-1c5e-4ee8-b31f-4e653ed77000",
     "bookId": "b12",
     "bookTitle": "Atomic Habits",
     "status": "pending",
-    "requestedAt": "2026-10-22T19:35:35.727Z",
-    "expiresAt": "2026-10-23T19:35:35.727Z",
+    "requestedAt": "2026-11-21T21:32:01.650Z",
+    "expiresAt": "2026-11-22T21:32:01.650Z",
     "decidedAt": null,
     "declineReason": null
   }

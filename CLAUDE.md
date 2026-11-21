@@ -94,6 +94,30 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   outside `_progress`, so `advancedTo` never changes it. A new `BookingStatus`
   goes into `_statusLines` (an exhaustive switch), and a new `ResourceBooking`
   field must be carried through `copyWith`.
+- **My Loans refreshes on open like My Bookings.** A payment, waive or
+  adjustment of a fine, or a loan a librarian marked lost, happens while the
+  student is elsewhere, so `LoansScreen` makes one `refreshQuietly()` on loans and
+  one on fines after its first frame (`_refreshOnOpen`), on every tab visit and not
+  on re-tapping the open tab. Each is skipped only while *that* list is still
+  loading (the fines are first loaded by this screen, while the loans were
+  usually loaded long before on Home, so a joint skip would leave the loans
+  stale). `LoansController` and `FinesController` `refreshQuietly()` both join a
+  fetch in flight (`_refreshing ??= ...`) and keep the data on a network error.
+  A successful return or renew also makes `LoansController` call the fines'
+  `refreshQuietly()` (`_refreshFines`, skipped when the fines were never read),
+  because a late one makes the server write the overdue fine, which the student
+  must see on the same screen.
+  The Fines section (`features/fines/fines_section.dart`) sits below the loans:
+  "Outstanding: ₹X" when the total is above 0, one card per fine
+  (`₹20, was ₹30` once lowered, and "Library note: ..." when there is one), and
+  "No fines." when empty. Amounts are whole rupees. `FineStatus.unknown` shows
+  "Update the app to see this item's status." in place of the amount and status
+  (the same fallback as loans and requests), and an unknown `FineReason` is simply
+  left unlabelled, so a later status such as "Disputed" never breaks the list. A
+  student with fines but no loans, requests or waitlist sees the section, not the
+  "No active loans" empty state, which waits until the fines are known to be empty.
+  The "On loan" heading is always shown, because the Fines section is always
+  below. Nothing is pushed while the student is on another screen.
 - **Toasts are mounted at the app root** (`MaterialApp.router(builder: withToasts)`)
   so pushed routes such as book detail and the booking flow can show them.
   `ConfirmDialogHost` lives in the tab shell.
@@ -159,7 +183,7 @@ lib/
 │   └── ui/                    # UiController, confirm dialogs, toasts
 ├── models/                    # json_serializable models + *.g.dart
 ├── widgets/                   # shared widgets
-└── features/                  # auth, catalog, loans, bookings, waitlist, profile,
+└── features/                  # auth, catalog, loans, fines, bookings, waitlist, profile,
                                # recommendations, home, health (unrouted, Phase 1)
 test/
 ├── support/                   # mock_overrides, fixtures, stub_http_adapter, fake_token_store

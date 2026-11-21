@@ -297,6 +297,7 @@ lib/
     ├── borrow_requests/       # borrow requests: repository and controller
     ├── waitlist/              # join/leave, place in line, copies held for you
     ├── loans/                 # active loans, renew, return
+    ├── fines/                 # the student's fines (the Fines section of My Loans)
     ├── bookings/              # booking flow, conflicts, check-in, time slots
     ├── profile/               # reliability
     ├── recommendations/
@@ -328,6 +329,15 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
   the 30-second re-check while a room request is pending. Tapping the tab you
   are already on does not re-check. The server lists these notices for 7 days.
   There are no push notifications yet.
+- **Fines, and changes to them, show when you open My Loans.** The Fines section
+  lists your fines (outstanding, adjusted, paid or waived, with the librarian's
+  note when one lowered or waived it). When a librarian records a payment, waives
+  or lowers a fine, or marks a copy you borrowed as lost (the loan leaves the
+  list), My Loans shows it the next time you open it: each time its tab is selected, the screen does one quiet re-check
+  of the loans and the fines (a failed re-check keeps what you had). While you
+  stay on another screen, or on My Loans itself, nothing updates, except that
+  returning or renewing a late book shows its fine at once. There are no push
+  notifications yet.
 - **Search sends a request on every keystroke**, with no debounce.
 - **The app is student-only.** It receives the user's `role`, but librarian
   tools are planned as a separate web console.

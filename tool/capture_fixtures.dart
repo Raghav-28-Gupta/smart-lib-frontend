@@ -6,9 +6,9 @@
 // changes.
 //
 // It MUTATES the dev database -- creates bookings and requests, checks in,
-// renews a loan, and has an admin decide requests and cancel and move a
-// booking -- so run it against a freshly seeded backend and re-seed
-// afterwards. The admin steps need an admin account. Its password is read from
+// renews a loan, returns an overdue one, and has an admin decide requests,
+// cancel and move a booking, and adjust and settle a fine -- so run it against a
+// freshly seeded backend and re-seed afterwards. The admin steps need an admin account. Its password is read from
 // a file, so it never appears in a command line or a log:
 //
 //   cd ../backend && npm run seed && npm run dev      # separate terminal
@@ -272,6 +272,24 @@ Future<void> main() async {
   _check('library reassign', await _call('POST', '/admin/bookings/$toMove/reassign',
       token: adminToken, body: {'resourceId': targets.first['id']}), 200);
   await _save('bookings_me_library', 'GET', '/bookings/me', expect: 200, token: token);
+
+  // --- Fines ----------------------------------------------------------------
+  // Last, so nothing captured above sees the loan gone. Returning Aditi's
+  // overdue loan (b4, due 3 days ago) writes a 30-rupee overdue fine (the seed
+  // leaves her with none). The admin then lowers it to 20 with a reason, and
+  // records it paid: the three states a student sees.
+  final b4Loan = (loans as List).cast<Map<String, dynamic>>().firstWhere((l) => l['bookId'] == 'b4');
+  _check('returning b4', await _call('POST', '/loans/${b4Loan['id']}/return', token: token), 200);
+  Map<String, dynamic> overdueFine(Object? body) => ((body! as Map<String, dynamic>)['fines'] as List)
+      .cast<Map<String, dynamic>>()
+      .firstWhere((f) => f['reason'] == 'overdue');
+  final fineId = overdueFine(await _save('fines_me', 'GET', '/fines/me', expect: 200, token: token))['id'] as String;
+  _check('adjusting the fine', await _call('POST', '/admin/fines/$fineId/adjust',
+      token: adminToken, body: {'amount': 20, 'reason': 'Returned during exam week'}), 200);
+  await _save('fines_me_adjusted', 'GET', '/fines/me', expect: 200, token: token);
+  _check('marking it paid', await _call('POST', '/admin/fines/$fineId/paid',
+      token: adminToken, body: {'amount': 20}), 200);
+  await _save('fines_me_paid', 'GET', '/fines/me', expect: 200, token: token);
 
   _client.close();
   stdout.writeln('Done. Now re-seed the backend: cd ../backend && npm run seed');

@@ -51,7 +51,41 @@ class _ScriptedLoanRepository extends MockLoanRepository {
   }
 }
 
+/// The mock, counting fetches, with the answer held back until [gate] completes.
+class _GatedLoanRepository extends MockLoanRepository {
+  int fetches = 0;
+  Completer<void>? gate;
+
+  @override
+  Future<List<Loan>> activeLoans() async {
+    fetches++;
+    await gate?.future;
+    return super.activeLoans();
+  }
+}
+
 void main() {
+  test('refreshQuietly joins a fetch in flight', () async {
+    // My Loans asks once for the open and once for a pending request; the
+    // server should be asked once.
+    final repo = _GatedLoanRepository();
+    final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo));
+    addTearDown(container.dispose);
+    await container.read(loansControllerProvider.future);
+    repo.gate = Completer<void>();
+    final notifier = container.read(loansControllerProvider.notifier);
+
+    final first = notifier.refreshQuietly();
+    final second = notifier.refreshQuietly();
+    repo.gate!.complete();
+    await Future.wait([first, second]);
+    expect(repo.fetches, 2); // the load, and one refresh for both callers
+
+    // The join ends with the fetch: a later call asks again.
+    await notifier.refreshQuietly();
+    expect(repo.fetches, 3);
+  });
+
   test('build() loads the 4 seeded loans, one of which is overdue', () async {
     final container = ProviderContainer(overrides: mockRepositoryOverrides());
     addTearDown(container.dispose);
