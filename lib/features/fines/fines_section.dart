@@ -44,8 +44,17 @@ class FinesSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fines = ref.watch(finesControllerProvider);
-    // Not `.when`: a refresh in flight (or a failed one) keeps showing the last list.
-    final summary = fines.value;
+    // Not `.value` as it stands: when a different student logs in the controller
+    // rebuilds, and Riverpod carries the last student's list (and error) along on
+    // every state until their own answer settles it -- the reload (`isReloading`),
+    // and an error if the fetch fails -- so it would show their fines and library
+    // notes to this student. A quiet refresh never enters a loading state, and a
+    // failed one keeps the data, so those still show the last list.
+    final summary = fines.isReloading || fines.hasError ? null : fines.value;
+    // The error is shown at once, as for any failed load, which includes the retries
+    // Riverpod makes (a loading state holding the error, flagged `retrying`). Any
+    // other loading state still holds the last student's error: not shown.
+    final failed = fines.hasError && (!fines.isLoading || fines.retrying);
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -59,7 +68,7 @@ class FinesSection extends ConsumerWidget {
           ],
           if (summary.fines.isEmpty) const Text('No fines.'),
           for (final f in summary.fines) _FineCard(f),
-        ] else if (fines.hasError) ...[
+        ] else if (failed) ...[
           const Text("Couldn't load your fines."),
           Align(
             alignment: Alignment.centerLeft,

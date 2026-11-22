@@ -15,7 +15,8 @@ Fine _fine(String id, {FineStatus status = FineStatus.outstanding, double amount
     );
 
 /// Serves whatever [summary] holds, counting fetches, with the network failing
-/// or the answer held back on demand.
+/// or the answer held back on demand. The answer is what [summary] held when the
+/// request was made (what the server knew then), however long the gate holds it.
 class _ScriptedFines implements FineRepository {
   _ScriptedFines(this.summary);
 
@@ -27,9 +28,10 @@ class _ScriptedFines implements FineRepository {
   @override
   Future<FinesSummary> myFines() async {
     fetches++;
+    final answer = summary;
     await gate?.future;
     if (offline) throw const ApiException(0, ApiException.networkMessage);
-    return summary;
+    return answer;
   }
 }
 
@@ -99,16 +101,111 @@ void main() {
     expect(repo.fetches, 3);
   });
 
-  test("a different user logging in gets their own fines, not the last user's", () async {
-    final (container, repo) = await loaded(_owing([_fine('f1')]));
-    final auth = container.read(authControllerProvider.notifier);
-    await auth.login('aditi.sharma@thapar.edu', 'anything');
-    await container.read(finesControllerProvider.future);
-    final before = repo.fetches;
+  group('when a different student logs in', () {
+    // Student A is logged in and has read their fines; the next to log in is B.
+    Future<(ProviderContainer, _ScriptedFines, AuthController)> asStudentA() async {
+      final repo = _ScriptedFines(_owing([_fine('A-fine')]));
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(fines: repo));
+      addTearDown(container.dispose);
+      final auth = container.read(authControllerProvider.notifier);
+      await auth.login('aditi.sharma@thapar.edu', 'anything');
+      expect((await container.read(finesControllerProvider.future)).fines.single.id, 'A-fine');
+      return (container, repo, auth);
+    }
 
-    await auth.logOut();
-    await auth.register('Second Student', 'second@thapar.edu', 'password123');
-    await container.read(finesControllerProvider.future);
-    expect(repo.fetches, greaterThan(before));
+    Future<void> switchToB(AuthController auth) async {
+      await auth.logOut();
+      await auth.register('Second Student', 'second@thapar.edu', 'password123');
+    }
+
+    test("they get their own fines, and A's stay flagged as reloading until those arrive", () async {
+      final (container, repo, auth) = await asStudentA();
+      // A screen is watching, as My Loans does.
+      container.listen(finesControllerProvider, (_, __) {});
+      repo.summary = _owing([_fine('B-fine')]);
+      repo.gate = Completer<void>();
+      final fetchesBefore = repo.fetches;
+
+      await switchToB(auth);
+
+      // Riverpod keeps A's list attached to the loading state; `isReloading` is
+      // how a screen tells it must not draw it.
+      final during = container.read(finesControllerProvider);
+      expect(repo.fetches, greaterThan(fetchesBefore));
+      expect(during.isReloading, true);
+      expect(during.hasError, false);
+
+      repo.gate!.complete();
+      final arrived = await container.read(finesControllerProvider.future);
+      expect(arrived.fines.single.id, 'B-fine');
+      final state = container.read(finesControllerProvider);
+      expect(state.isLoading, false);
+      expect(state.value!.fines.single.id, 'B-fine');
+    });
+
+    test("A's refresh still in flight when B logs in lands without changing B's fines", () async {
+      final (container, repo, auth) = await asStudentA();
+      container.listen(finesControllerProvider, (_, __) {});
+      final notifier = container.read(finesControllerProvider.notifier);
+
+      // A's quiet refresh is on the wire (it will answer with A's fines)...
+      repo.gate = Completer<void>();
+      final staleGate = repo.gate!;
+      final stale = notifier.refreshQuietly();
+      // ...when A logs out and B logs in, whose own fetch answers at once.
+      repo.gate = null;
+      repo.summary = _owing([_fine('B-fine')]);
+      await switchToB(auth);
+      expect((await container.read(finesControllerProvider.future)).fines.single.id, 'B-fine');
+
+      staleGate.complete();
+      await stale;
+
+      expect(container.read(finesControllerProvider).value!.fines.single.id, 'B-fine');
+    });
+
+    test("B's refreshQuietly does its own fetch instead of joining A's in flight", () async {
+      final (container, repo, auth) = await asStudentA();
+      container.listen(finesControllerProvider, (_, __) {});
+      final notifier = container.read(finesControllerProvider.notifier);
+
+      repo.gate = Completer<void>();
+      final staleGate = repo.gate!;
+      final stale = notifier.refreshQuietly();
+      repo.gate = null;
+      repo.summary = _owing([_fine('B-fine')]);
+      await switchToB(auth);
+      await container.read(finesControllerProvider.future);
+      final fetchesBefore = repo.fetches;
+
+      // B has paid something since: B's refresh must see it, not wait for A's.
+      repo.summary = _owing([_fine('B-fine', status: FineStatus.paid)]);
+      await notifier.refreshQuietly().timeout(const Duration(seconds: 1));
+
+      expect(repo.fetches, fetchesBefore + 1);
+      expect(container.read(finesControllerProvider).value!.fines.single.status, FineStatus.paid);
+
+      staleGate.complete();
+      await stale;
+      expect(container.read(finesControllerProvider).value!.fines.single.status, FineStatus.paid);
+    });
+
+    test("B's own refreshes still join each other", () async {
+      // The generation only separates students: within one student the join stays.
+      final (container, repo, auth) = await asStudentA();
+      container.listen(finesControllerProvider, (_, __) {});
+      await switchToB(auth);
+      await container.read(finesControllerProvider.future);
+      final notifier = container.read(finesControllerProvider.notifier);
+      repo.gate = Completer<void>();
+      final fetchesBefore = repo.fetches;
+
+      final first = notifier.refreshQuietly();
+      final second = notifier.refreshQuietly();
+      repo.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(repo.fetches, fetchesBefore + 1);
+    });
   });
 }

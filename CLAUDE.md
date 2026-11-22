@@ -73,7 +73,14 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   `Reservation` is `held`, offer Request to borrow.
 - **Per-user state is keyed on the user.** Controllers holding a user's data
   `watch` `authControllerProvider.select((s) => s.user?.id)`, so logging in as
-  someone else refetches instead of showing the previous user's data.
+  someone else refetches instead of showing the previous user's data. Riverpod
+  keeps the previous user's value on the reloading state (`isReloading`) and beside
+  the error of a failed refetch, so a screen must not render `.value` then (My Loans
+  reads both as not loaded, `own()` in `LoansScreen`, and `FinesSection`). Controllers
+  with a `refreshQuietly` (`LoansController`, `FinesController`) bump a generation
+  in `build()`, drop a result begun under an older one, and never join an older
+  generation's fetch in flight, so a refresh started for the last user cannot land
+  in the next one's state.
 - **Screens showing a pending request wrap their body in `PendingRefresh`**
   (`lib/widgets/pending_refresh.dart`). It re-checks on open and every 30 s
   through the controllers' `refreshQuietly()`, which keeps the current list
@@ -106,7 +113,9 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   A successful return or renew also makes `LoansController` call the fines'
   `refreshQuietly()` (`_refreshFines`, skipped when the fines were never read),
   because a late one makes the server write the overdue fine, which the student
-  must see on the same screen.
+  must see on the same screen. So does a refusal that means stale state (409/404:
+  the loan was closed elsewhere, for example marked lost by a librarian, which wrote
+  fines), but not a network error.
   The Fines section (`features/fines/fines_section.dart`) sits below the loans:
   "Outstanding: ₹X" when the total is above 0, one card per fine
   (`₹20, was ₹30` once lowered, and "Library note: ..." when there is one), and

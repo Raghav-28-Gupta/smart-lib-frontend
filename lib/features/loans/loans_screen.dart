@@ -83,13 +83,19 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
   @override
   Widget build(BuildContext context) {
     final loans = ref.watch(loansControllerProvider);
+    // When a different student logs in these lists rebuild, and Riverpod carries the
+    // last student's list along on the loading state (`isReloading`) and beside the
+    // error if the fetch fails, so `.value` would still be theirs. Read as not
+    // loaded until this student's answer arrives. (The loans need no guard:
+    // `loans.when` shows its loading or error branch there.)
+    T? own<T>(AsyncValue<T> list) => list.isReloading || list.hasError ? null : list.value;
     // Held copies first: they pass to the next student when the hold runs out.
-    final waitlist = [...?ref.watch(waitlistControllerProvider).value]
+    final waitlist = [...?own(ref.watch(waitlistControllerProvider))]
       ..sort((a, b) => a.status == b.status ? 0 : (a.status == ReservationStatus.held ? -1 : 1));
-    final requests = (ref.watch(borrowRequestsControllerProvider).value ?? const <BorrowRequest>[]).latestPerBook();
+    final requests = (own(ref.watch(borrowRequestsControllerProvider)) ?? const <BorrowRequest>[]).latestPerBook();
     // Known to be empty, not merely not loaded yet: a student with fines but
     // nothing else must not see the empty state flash first.
-    final noFines = ref.watch(finesControllerProvider).value?.fines.isEmpty ?? false;
+    final noFines = own(ref.watch(finesControllerProvider))?.fines.isEmpty ?? false;
     return PendingRefresh(
       active: requests.anyPending,
       onTick: _recheck,

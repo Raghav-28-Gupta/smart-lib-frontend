@@ -7,6 +7,8 @@ import 'package:smartlib_frontend/core/theme/smartlib_theme.dart';
 import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/ui/confirm_dialog.dart';
 import 'package:smartlib_frontend/core/ui/toast_overlay.dart';
+import 'package:smartlib_frontend/features/auth/auth_controller.dart';
+import 'package:smartlib_frontend/features/auth/auth_repository.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_request_repository.dart';
 import 'package:smartlib_frontend/features/borrow_requests/borrow_requests_controller.dart';
 import 'package:smartlib_frontend/features/fines/fine_repository.dart';
@@ -16,10 +18,12 @@ import 'package:smartlib_frontend/features/loans/loans_controller.dart';
 import 'package:smartlib_frontend/features/loans/loans_screen.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
 import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
+import 'package:smartlib_frontend/models/app_user.dart';
 import 'package:smartlib_frontend/models/borrow_request.dart';
 import 'package:smartlib_frontend/models/fine.dart';
 import 'package:smartlib_frontend/models/loan.dart';
 import 'package:smartlib_frontend/models/reservation.dart';
+import 'package:smartlib_frontend/widgets/loading_skeleton.dart';
 import '../../support/fixtures.dart';
 import '../../support/mock_overrides.dart';
 
@@ -126,6 +130,84 @@ class _LateLoans extends MockLoanRepository {
   }
 }
 
+/// The mock loans where the loan was closed somewhere else (a librarian marked the
+/// copy lost, or it was returned on another device), which charged a ₹300 fine into
+/// [fines] the student hasn't seen. Returning or renewing here is refused with [error].
+class _ClosedElsewhere extends MockLoanRepository {
+  _ClosedElsewhere(this.fines, this.error);
+  final MockFineRepository fines;
+  final ApiException error;
+
+  Never _refuse() {
+    fines.fines = [_fine('lost-fine', item: 'Operating System Concepts', reason: FineReason.lost, amount: 300), ...fines.fines];
+    throw error;
+  }
+
+  @override
+  Future<void> returnLoan(String loanId) async => _refuse();
+  @override
+  Future<Loan> renew(String loanId) async => _refuse();
+}
+
+const _closedBecauseLost = ConflictException('This loan was closed because the copy was marked lost.');
+const _offline = ApiException(0, ApiException.networkMessage);
+
+/// Logs in whoever asks, at once (the mock's 300 ms delay would need pumping).
+class _InstantAuth extends MockAuthRepository {
+  @override
+  Future<AppUser> login(String email, String password) async =>
+      AppUser(id: 'u-$email', name: email, email: email, roll: '1');
+}
+
+/// Serves [served] as it was when the request was made, with the answer held back
+/// while [gate] is set: a student's list that is still on its way.
+class _GatedFines extends MockFineRepository {
+  List<Fine> served = [];
+  bool failing = false;
+  Completer<void>? gate;
+  @override
+  Future<FinesSummary> myFines() async {
+    final gate = this.gate;
+    final answer = List.of(served);
+    final fail = failing;
+    await gate?.future;
+    if (fail) throw const ApiException(500, 'The library server had a problem.');
+    return FinesSummary(fines: answer, outstandingTotal: answer.fold(0.0, (t, f) => t + f.amount));
+  }
+}
+
+class _GatedWaitlist extends MockWaitlistRepository {
+  _GatedWaitlist() : super(MockBookRepository());
+  List<Reservation> served = [];
+  bool failing = false;
+  Completer<void>? gate;
+  @override
+  Future<List<Reservation>> mine() async {
+    final gate = this.gate;
+    final answer = List.of(served);
+    final fail = failing;
+    await gate?.future;
+    if (fail) throw const ApiException(500, 'The library server had a problem.');
+    return answer;
+  }
+}
+
+class _GatedRequests extends MockBorrowRequestRepository {
+  _GatedRequests() : super(MockBookRepository());
+  List<BorrowRequest> served = [];
+  bool failing = false;
+  Completer<void>? gate;
+  @override
+  Future<List<BorrowRequest>> mine() async {
+    final gate = this.gate;
+    final answer = List.of(served);
+    final fail = failing;
+    await gate?.future;
+    if (fail) throw const ApiException(500, 'The library server had a problem.');
+    return answer;
+  }
+}
+
 Fine _fine(
   String id, {
   String item = 'Operating System Concepts',
@@ -168,6 +250,12 @@ Future<void> _pumpLoans(
   ));
   await tester.pumpAndSettle();
 }
+
+/// Shows My Loans on an existing container, as a tab visit builds it afresh.
+Future<void> _showMyLoans(WidgetTester tester, ProviderContainer container) => tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(theme: buildSmartLibTheme(), builder: withToasts, home: const LoansScreen()),
+    ));
 
 void main() {
   testWidgets('shows the overdue fine and the renewal-blocked reason', (tester) async {
@@ -514,9 +602,35 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     });
 
-    testWidgets('a refused return does not refresh the fines', (tester) async {
+    testWidgets('a return refused because the loan was closed elsewhere refreshes the fines', (tester) async {
+      // A librarian marked the copy lost: the overdue fine and the replacement
+      // fine were written, and the refusal is the student's first sign of it.
       final fines = _CountingFines();
-      await _pumpLoans(tester, loans: _RefusingLoanRepository(), fines: fines, confirmDialogs: true);
+      await _pumpLoans(tester, loans: _ClosedElsewhere(fines, _closedBecauseLost), fines: fines, confirmDialogs: true);
+      expect(find.text('No fines.'), findsOneWidget);
+
+      await tester.tap(overdueLoan(TextButton, 'Return'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Return'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('This loan was closed because the copy was marked lost.'), findsOneWidget);
+      expect(fines.fetches, 2);
+      expect(find.text('Outstanding: ₹300'), findsOneWidget);
+      expect(find.textContaining('Lost book'), findsOneWidget);
+      expect(find.text('No fines.'), findsNothing);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a return refused because it was already returned elsewhere refreshes the fines', (tester) async {
+      // Returned late on another device, which wrote the overdue fine.
+      final fines = _CountingFines();
+      await _pumpLoans(
+        tester,
+        loans: _ClosedElsewhere(fines, const ConflictException('This loan has already been returned.')),
+        fines: fines,
+        confirmDialogs: true,
+      );
 
       await tester.tap(overdueLoan(TextButton, 'Return'));
       await tester.pumpAndSettle();
@@ -524,8 +638,278 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('This loan has already been returned.'), findsOneWidget);
-      expect(fines.fetches, 1);
+      expect(fines.fetches, 2);
+      expect(find.text('Outstanding: ₹300'), findsOneWidget);
       await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a return that fails on the network does not refresh the fines', (tester) async {
+      final fines = _CountingFines();
+      await _pumpLoans(tester, loans: _ClosedElsewhere(fines, _offline), fines: fines, confirmDialogs: true);
+
+      await tester.tap(overdueLoan(TextButton, 'Return'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Return'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ApiException.networkMessage), findsOneWidget);
+      expect(fines.fetches, 1); // nothing is known to have changed
+      expect(find.text('No fines.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a renewal refused because the loan was closed elsewhere refreshes the fines', (tester) async {
+      final fines = _CountingFines();
+      await _pumpLoans(tester, loans: _ClosedElsewhere(fines, _closedBecauseLost), fines: fines);
+      expect(find.text('No fines.'), findsOneWidget);
+
+      await tester.tap(overdueLoan(OutlinedButton, 'Renew'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('This loan was closed because the copy was marked lost.'), findsOneWidget);
+      expect(fines.fetches, 2);
+      expect(find.text('Outstanding: ₹300'), findsOneWidget);
+      expect(find.text('No fines.'), findsNothing);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a renewal that fails on the network does not refresh the fines', (tester) async {
+      final fines = _CountingFines();
+      await _pumpLoans(tester, loans: _ClosedElsewhere(fines, _offline), fines: fines);
+
+      await tester.tap(overdueLoan(OutlinedButton, 'Renew'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(ApiException.networkMessage), findsOneWidget);
+      expect(fines.fetches, 1);
+      expect(find.text('No fines.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+    });
+  });
+
+  group('after one student logs out and another logs in', () {
+    // The providers outlive the screen, which closes at logout and opens again for
+    // the next student. Their lists are fetched again, but Riverpod keeps the last
+    // student's list on the loading state, so a screen drawing `.value` shows it
+    // until the new student's answer arrives.
+    Future<ProviderContainer> openAsFirstStudent(
+      WidgetTester tester, {
+      LoanRepository? loans,
+      MockFineRepository? fines,
+      MockWaitlistRepository? waitlist,
+      MockBorrowRequestRepository? borrowRequests,
+      // Riverpod retries a failed fetch for about 40 seconds, showing it as a
+      // loading state; a test about a fetch that has finally failed turns that off.
+      bool retries = true,
+    }) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 3000);
+      addTearDown(tester.view.reset);
+      final container = ProviderContainer(
+        retry: retries ? null : (_, __) => null,
+        overrides: mockRepositoryOverrides(
+          auth: _InstantAuth(), loans: loans, fines: fines, waitlist: waitlist, borrowRequests: borrowRequests,
+        ),
+      );
+      addTearDown(container.dispose);
+      await container.read(authControllerProvider.notifier).login('aditi.sharma@thapar.edu', 'anything');
+      await _showMyLoans(tester, container);
+      await tester.pumpAndSettle();
+      return container;
+    }
+
+    // The first student logs out (which closes the screen), the next logs in and
+    // opens My Loans. Whatever the test gated is still on its way.
+    Future<void> openAsNextStudent(WidgetTester tester, ProviderContainer container) async {
+      await tester.pumpWidget(const SizedBox());
+      final auth = container.read(authControllerProvider.notifier);
+      await auth.logOut();
+      await auth.login('second@thapar.edu', 'anything');
+      await _showMyLoans(tester, container);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("does not show the last student's fines, amounts or library notes while the next student's load", (tester) async {
+      final fines = _GatedFines()
+        ..served = [_fine('a1', item: 'Algorithms Unlocked', amount: 75, note: 'Waived pending the exam board')];
+      final container = await openAsFirstStudent(tester, fines: fines);
+      expect(find.text('Algorithms Unlocked'), findsOneWidget);
+      expect(find.text('Outstanding: ₹75'), findsOneWidget);
+      expect(find.text('Library note: Waived pending the exam board'), findsOneWidget);
+
+      fines.served = [_fine('b1', item: 'Sapiens', amount: 20)];
+      fines.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      // The loans have arrived, so this is the window where the fines have not.
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Fines'), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+      expect(find.text('₹75'), findsNothing);
+      expect(find.textContaining('Outstanding'), findsNothing);
+      expect(find.textContaining('Library note'), findsNothing);
+      expect(find.text('No fines.'), findsNothing);
+      expect(find.byType(LoadingSkeleton), findsOneWidget);
+
+      fines.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sapiens'), findsOneWidget);
+      expect(find.text('Outstanding: ₹20'), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+    });
+
+    testWidgets("does not show the last student's fines error while the next student's load", (tester) async {
+      final fines = _GatedFines()..failing = true;
+      final container = await openAsFirstStudent(tester, fines: fines, retries: false);
+      expect(find.text("Couldn't load your fines."), findsOneWidget);
+
+      fines.failing = false;
+      fines.served = [_fine('b1', item: 'Sapiens', amount: 20)];
+      fines.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text("Couldn't load your fines."), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(find.byType(LoadingSkeleton), findsOneWidget);
+
+      fines.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sapiens'), findsOneWidget);
+    });
+
+    testWidgets("says the fines could not be loaded, not the last student's fines, when the next student's fetch fails", (tester) async {
+      // Riverpod keeps the last student's value beside the error, too.
+      final fines = _GatedFines()..served = [_fine('a1', item: 'Algorithms Unlocked', amount: 75, note: 'Waived pending the exam board')];
+      final container = await openAsFirstStudent(tester, fines: fines, retries: false);
+      expect(find.text('Algorithms Unlocked'), findsOneWidget);
+
+      fines.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text("Couldn't load your fines."), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+      expect(find.textContaining('Outstanding'), findsNothing);
+      expect(find.textContaining('Library note'), findsNothing);
+
+      // Retry asks again, and the next student's own fines show.
+      fines.failing = false;
+      fines.served = [_fine('b1', item: 'Sapiens', amount: 20)];
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Sapiens'), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+    });
+
+    testWidgets("does not show the last student's fines while the next student's fetch is being retried", (tester) async {
+      // Riverpod retries a failed fetch, and shows the retry as a loading state
+      // holding both the new error and the last student's value. The error is the
+      // next student's, so it shows at once, as for any failed load.
+      final fines = _GatedFines()..served = [_fine('a1', item: 'Algorithms Unlocked', amount: 75)];
+      final container = await openAsFirstStudent(tester, fines: fines);
+      expect(find.text('Algorithms Unlocked'), findsOneWidget);
+
+      fines.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text("Couldn't load your fines."), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+      expect(find.textContaining('Outstanding'), findsNothing);
+
+      // Once the retries run out the error is final, and still not their value.
+      await tester.pump(const Duration(minutes: 1));
+      expect(find.text("Couldn't load your fines."), findsOneWidget);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+      expect(find.textContaining('Outstanding'), findsNothing);
+    });
+
+    testWidgets("does not show the last student's waitlist or requests when the next student's fetches fail", (tester) async {
+      final waitlist = _GatedWaitlist()
+        ..served = [const Reservation(id: 'res-b2', bookId: 'b2', status: ReservationStatus.waiting, queuePosition: 3)];
+      final requests = _GatedRequests()..served = [_request('br-3', 'b12', 'Atomic Habits', BorrowRequestStatus.pending)];
+      final container = await openAsFirstStudent(tester, waitlist: waitlist, borrowRequests: requests, retries: false);
+      expect(find.text('#3 in line'), findsOneWidget);
+      expect(find.text('Cancel request'), findsOneWidget);
+
+      waitlist.failing = true;
+      requests.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Waitlist'), findsNothing);
+      expect(find.text('#3 in line'), findsNothing);
+      expect(find.text('Requests'), findsNothing);
+      expect(find.text('Cancel request'), findsNothing);
+    });
+
+    testWidgets("does not show the empty state while the next student's fines are on their way", (tester) async {
+      // The first student has nothing at all, so they see the empty state. The
+      // next student owes a fine, which is still loading: "known to be empty"
+      // must not be read off the first student's empty list.
+      final fines = _GatedFines();
+      final container = await openAsFirstStudent(tester, loans: _NoLoans(), fines: fines);
+      expect(find.text('No active loans'), findsOneWidget);
+
+      fines.served = [_fine('b1', item: 'Sapiens', amount: 20)];
+      fines.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('No active loans'), findsNothing);
+      expect(find.text('Browse the catalog'), findsNothing);
+      expect(find.text('Fines'), findsOneWidget);
+
+      fines.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sapiens'), findsOneWidget);
+      expect(find.text('No active loans'), findsNothing);
+    });
+
+    testWidgets("does not show the last student's waitlist while the next student's loads", (tester) async {
+      final waitlist = _GatedWaitlist()
+        ..served = [const Reservation(id: 'res-b2', bookId: 'b2', status: ReservationStatus.waiting, queuePosition: 3)];
+      final container = await openAsFirstStudent(tester, waitlist: waitlist);
+      expect(find.text('Waitlist'), findsOneWidget);
+      expect(find.text('#3 in line'), findsOneWidget);
+
+      waitlist.served = [const Reservation(id: 'res-b5', bookId: 'b5', status: ReservationStatus.waiting, queuePosition: 1)];
+      waitlist.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Waitlist'), findsNothing);
+      expect(find.text('#3 in line'), findsNothing);
+
+      waitlist.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Waitlist'), findsOneWidget);
+      expect(find.text('#1 in line'), findsOneWidget);
+      expect(find.text('#3 in line'), findsNothing);
+    });
+
+    testWidgets("does not show the last student's requests while the next student's load", (tester) async {
+      final requests = _GatedRequests()
+        ..served = [_request('br-3', 'b12', 'Atomic Habits', BorrowRequestStatus.pending)];
+      final container = await openAsFirstStudent(tester, borrowRequests: requests);
+      expect(find.text('Requests'), findsOneWidget);
+      expect(find.text('Cancel request'), findsOneWidget);
+
+      requests.served = [_request('br-9', 'b11', 'Sapiens', BorrowRequestStatus.expired)];
+      requests.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Requests'), findsNothing);
+      expect(find.text('Atomic Habits'), findsNothing);
+      expect(find.text('Cancel request'), findsNothing);
+
+      requests.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Requests'), findsOneWidget);
+      expect(find.text('Expired — no librarian approved it in time'), findsOneWidget);
+      expect(find.text('Atomic Habits'), findsNothing);
     });
   });
 

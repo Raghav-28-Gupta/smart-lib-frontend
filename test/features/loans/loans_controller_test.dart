@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
+import 'package:smartlib_frontend/features/fines/fine_repository.dart';
+import 'package:smartlib_frontend/features/fines/fines_controller.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/loans/loans_controller.dart';
+import 'package:smartlib_frontend/models/fine.dart';
 import 'package:smartlib_frontend/models/loan.dart';
 import '../../support/mock_overrides.dart';
 
@@ -61,6 +64,33 @@ class _GatedLoanRepository extends MockLoanRepository {
     fetches++;
     await gate?.future;
     return super.activeLoans();
+  }
+}
+
+/// Answers each fetch with one loan named by [answer] as it was when the request
+/// was made (what the server knew then), counting fetches, with the answer held
+/// back while [gate] is set.
+class _ScriptedLoans extends MockLoanRepository {
+  String answer = 'A-loan';
+  int fetches = 0;
+  Completer<void>? gate;
+
+  @override
+  Future<List<Loan>> activeLoans() async {
+    fetches++;
+    final id = answer;
+    await gate?.future;
+    return [Loan(id: id, bookId: 'b1', dueDate: DateTime(2026, 10, 1), status: LoanStatus.normal, fineAmount: 0, canRenew: true)];
+  }
+}
+
+/// The mock fines, counting fetches.
+class _CountingFines extends MockFineRepository {
+  int fetches = 0;
+  @override
+  Future<FinesSummary> myFines() {
+    fetches++;
+    return super.myFines();
   }
 }
 
@@ -132,6 +162,85 @@ void main() {
     expect((await container.read(loansControllerProvider.future)).single.id, 'fetch-2');
   });
 
+  group('when a different student logs in', () {
+    Future<(ProviderContainer, _ScriptedLoans, AuthController)> asStudentA() async {
+      final repo = _ScriptedLoans();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo));
+      addTearDown(container.dispose);
+      final auth = container.read(authControllerProvider.notifier);
+      await auth.login('aditi.sharma@thapar.edu', 'anything');
+      expect((await container.read(loansControllerProvider.future)).single.id, 'A-loan');
+      container.listen(loansControllerProvider, (_, __) {}); // a screen is watching
+      return (container, repo, auth);
+    }
+
+    Future<void> switchToB(AuthController auth) async {
+      await auth.logOut();
+      await auth.register('Second Student', 'second@thapar.edu', 'password123');
+    }
+
+    test("A's refresh still in flight when B logs in lands without changing B's loans", () async {
+      final (container, repo, auth) = await asStudentA();
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      // A's quiet refresh is on the wire (it will answer with A's loans)...
+      repo.gate = Completer<void>();
+      final staleGate = repo.gate!;
+      final stale = notifier.refreshQuietly();
+      // ...when A logs out and B logs in, whose own fetch answers at once.
+      repo.gate = null;
+      repo.answer = 'B-loan';
+      await switchToB(auth);
+      expect((await container.read(loansControllerProvider.future)).single.id, 'B-loan');
+
+      staleGate.complete();
+      await stale;
+
+      expect(container.read(loansControllerProvider).value!.single.id, 'B-loan');
+    });
+
+    test("B's refreshQuietly does its own fetch instead of joining A's in flight", () async {
+      final (container, repo, auth) = await asStudentA();
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      repo.gate = Completer<void>();
+      final staleGate = repo.gate!;
+      final stale = notifier.refreshQuietly();
+      repo.gate = null;
+      repo.answer = 'B-loan';
+      await switchToB(auth);
+      await container.read(loansControllerProvider.future);
+      final fetchesBefore = repo.fetches;
+
+      // B has borrowed something since: B's refresh must see it, not wait for A's.
+      repo.answer = 'B-loan-2';
+      await notifier.refreshQuietly().timeout(const Duration(seconds: 1));
+
+      expect(repo.fetches, fetchesBefore + 1);
+      expect(container.read(loansControllerProvider).value!.single.id, 'B-loan-2');
+
+      staleGate.complete();
+      await stale;
+      expect(container.read(loansControllerProvider).value!.single.id, 'B-loan-2');
+    });
+
+    test("B's own refreshes still join each other", () async {
+      final (container, repo, auth) = await asStudentA();
+      await switchToB(auth);
+      await container.read(loansControllerProvider.future);
+      final notifier = container.read(loansControllerProvider.notifier);
+      repo.gate = Completer<void>();
+      final fetchesBefore = repo.fetches;
+
+      final first = notifier.refreshQuietly();
+      final second = notifier.refreshQuietly();
+      repo.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(repo.fetches, fetchesBefore + 1);
+    });
+  });
+
   test('unrelated auth changes do not refetch the loans', () async {
     // Only who is logged in matters -- a validation message clearing, say,
     // must not trigger a network round trip.
@@ -171,6 +280,21 @@ void main() {
       await expectLater(container.read(loansControllerProvider.notifier).returnLoan('loan1'), throwsA(isA<ConflictException>()));
       await container.read(loansControllerProvider.future);
       expect(repo.fetches, 2);
+    });
+
+    test('a refusal does not read fines the student never opened', () async {
+      // The fines refresh follows the loans', but only for a student who has them.
+      final fines = _CountingFines();
+      final repo = _ScriptedLoanRepository()..returnError = const ConflictException('This loan has already been returned.');
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo, fines: fines));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+
+      await expectLater(container.read(loansControllerProvider.notifier).returnLoan('loan1'), throwsA(isA<ConflictException>()));
+      await container.read(loansControllerProvider.future);
+
+      expect(fines.fetches, 0);
+      expect(container.exists(finesControllerProvider), false);
     });
 
     test('an unreachable server keeps the list as it is', () async {
