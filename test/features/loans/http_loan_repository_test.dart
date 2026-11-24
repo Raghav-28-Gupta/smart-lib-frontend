@@ -7,6 +7,7 @@ import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/auth/token_store.dart';
 import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import 'package:smartlib_frontend/models/return_report.dart';
 import '../../support/fake_token_store.dart';
 import '../../support/fixtures.dart';
 import '../../support/stub_http_adapter.dart';
@@ -41,6 +42,40 @@ void main() {
     await loans.returnLoan('loan-1');
     expect(stub.requests.single.method, 'POST');
     expect(stub.requests.single.path, '/loans/loan-1/return');
+  });
+
+  group('returnLoan with and without a report', () {
+    test('sends no body when there is no report', () async {
+      final (loans, stub) = repo((_) => StubResponse(200, fixture('loan_renewed')));
+      await loans.returnLoan('loan-1');
+      expect(stub.requests.single.data, isNull);
+    });
+
+    test('sends { report: { category, note } } in the same request when there is one', () async {
+      final (loans, stub) = repo((_) => StubResponse(200, fixture('loan_renewed')));
+      await loans.returnLoan('loan-1', report: const ReturnReport(category: ReportCategory.missingPages, note: 'Pages 40-52 are gone'));
+      expect(stub.requests, hasLength(1)); // the report rides on the return, never a second call
+      expect(stub.requests.single.method, 'POST');
+      expect(stub.requests.single.path, '/loans/loan-1/return');
+      expect(stub.requests.single.data, {
+        'report': {'category': 'missing_pages', 'note': 'Pages 40-52 are gone'},
+      });
+    });
+
+    test('a report without a note sends no note key', () async {
+      final (loans, stub) = repo((_) => StubResponse(200, fixture('loan_renewed')));
+      await loans.returnLoan('loan-1', report: const ReturnReport(category: ReportCategory.damaged));
+      expect(stub.requests.single.data, {
+        'report': {'category': 'damaged'},
+      });
+    });
+
+    test('a 409 maps as before, with or without a report', () async {
+      final (loans, _) = repo((_) => const StubResponse(409, {'error': 'This loan has already been returned.'}));
+      final refused = throwsA(isA<ConflictException>().having((e) => e.message, 'message', 'This loan has already been returned.'));
+      await expectLater(loans.returnLoan('loan-1'), refused);
+      await expectLater(loans.returnLoan('loan-1', report: const ReturnReport(category: ReportCategory.damaged)), refused);
+    });
   });
 
   test('a refused renewal carries the server\'s reason', () async {

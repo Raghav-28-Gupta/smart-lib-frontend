@@ -40,4 +40,48 @@ void main() {
     final (fines, _) = repo((o) => throw DioException.connectionError(requestOptions: o, reason: 'offline'));
     await expectLater(fines.myFines(), throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 0)));
   });
+
+  test("GET /fines/me carries each fine's dispute", () async {
+    final (fines, _) = repo((_) => StubResponse(200, fixture('fines_me_disputed')));
+    final summary = await fines.myFines();
+    final fine = summary.fines.singleWhere((f) => f.reason == FineReason.overdue);
+    expect(fine.status, FineStatus.outstanding);
+    expect(fine.dispute?.status, DisputeStatus.open);
+  });
+
+  test('POST /fines/:id/dispute sends the reason', () async {
+    // The answer is `{ id, status: 'open' }`; the app reads the dispute back from the fines.
+    final (fines, stub) = repo((_) => const StubResponse(201, {'id': 'd1', 'status': 'open'}));
+    await fines.dispute('fine/1', 'The desk scanned my return a day late.');
+    expect(stub.requests.single.method, 'POST');
+    // The id is escaped into the path, like every other id the app sends.
+    expect(stub.requests.single.path, '/fines/fine%2F1/dispute');
+    expect(stub.requests.single.data, {'reason': 'The desk scanned my return a day late.'});
+  });
+
+  test("a 409 maps to ConflictException with the server's message", () async {
+    for (final message in [
+      "You've already disputed this fine.",
+      "This fine can't be disputed because it is already paid or waived.",
+    ]) {
+      final (fines, _) = repo((_) => StubResponse(409, {'error': message}));
+      await expectLater(
+        fines.dispute('f1', 'It was returned on time.'),
+        throwsA(isA<ConflictException>().having((e) => e.message, 'message', message)),
+      );
+    }
+  });
+
+  test("a 404 carries the server's message, and a network failure has status 0", () async {
+    final (gone, _) = repo((_) => const StubResponse(404, {'error': 'Fine not found'}));
+    await expectLater(
+      gone.dispute('f1', 'It was returned on time.'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 404).having((e) => e.message, 'message', 'Fine not found')),
+    );
+    final (offline, _) = repo((o) => throw DioException.connectionError(requestOptions: o, reason: 'offline'));
+    await expectLater(
+      offline.dispute('f1', 'It was returned on time.'),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 0)),
+    );
+  });
 }

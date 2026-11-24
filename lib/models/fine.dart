@@ -18,6 +18,27 @@ enum FineReason {
   unknown,
 }
 
+/// Where the student's dispute of a fine stands. [open] waits for a librarian;
+/// the other three are the answer: the fine was waived, lowered, or left as it
+/// was. [unknown] stands in for a status this version doesn't know.
+enum DisputeStatus { open, waived, adjusted, upheld, unknown }
+
+/// The student's one dispute of a fine (the backend allows a single one, ever),
+/// open or answered. The fine's own `status` is separate and unchanged by it.
+@JsonSerializable(createToJson: false)
+class FineDispute {
+  const FineDispute({required this.status, this.note});
+
+  factory FineDispute.fromJson(Map<String, dynamic> json) => _$FineDisputeFromJson(json);
+
+  @JsonKey(unknownEnumValue: DisputeStatus.unknown)
+  final DisputeStatus status;
+
+  /// The librarian's resolution note: null while the dispute is open, and when
+  /// they gave none.
+  final String? note;
+}
+
 /// One of the student's fines, from GET /fines/me.
 @JsonSerializable(createToJson: false)
 class Fine {
@@ -30,6 +51,7 @@ class Fine {
     required this.status,
     required this.date,
     this.note,
+    this.dispute,
   });
 
   factory Fine.fromJson(Map<String, dynamic> json) => _$FineFromJson(json);
@@ -61,7 +83,20 @@ class Fine {
   /// fine is paid, and is null when the fine was never adjusted.
   final String? note;
 
+  /// The student's dispute of this fine, or null when they never disputed it (or
+  /// the server is older than the disputes). Once there is one the fine can't be
+  /// disputed again, whatever became of it.
+  final FineDispute? dispute;
+
   bool get wasAdjusted => originalAmount != amount;
+
+  /// This fine with [dispute] on it: what the card shows the moment the server accepts
+  /// the student's dispute, until its own list says so. Nothing else about the fine
+  /// changes (a disputed fine is still owed).
+  Fine withDispute(FineDispute dispute) => Fine(
+        id: id, reason: reason, item: item, amount: amount, originalAmount: originalAmount,
+        status: status, date: date, note: note, dispute: dispute,
+      );
 }
 
 /// GET /fines/me: the newest fines (at most 50) and what is still owed over all of them.

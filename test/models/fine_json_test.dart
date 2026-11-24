@@ -84,4 +84,59 @@ void main() {
     expect(waived.note, 'Medical leave');
     expect(Fine.fromJson({...rawFine(), 'note': null}).note, isNull);
   });
+
+  group('a dispute on the fine', () {
+    test('parses an open dispute', () {
+      // The fine the student disputed: still outstanding, with its dispute open and
+      // no library answer yet.
+      final fine = overdue('fines_me_disputed');
+      expect(fine.status, FineStatus.outstanding);
+      expect(fine.amount, 30.0);
+      expect(fine.dispute, isNotNull);
+      expect(fine.dispute!.status, DisputeStatus.open);
+      expect(fine.dispute!.note, isNull);
+    });
+
+    test('parses a fine with a closed dispute', () {
+      // The librarian lowered the disputed fine (naming the dispute), which closed it:
+      // the dispute stays on the fine, with the adjustment's reason as its note.
+      final fine = overdue('fines_me_adjusted');
+      expect(fine.status, FineStatus.adjusted);
+      expect(fine.dispute, isNotNull);
+      expect(fine.dispute!.status, DisputeStatus.adjusted);
+      expect(fine.dispute!.note, 'Returned during exam week');
+      // The closed dispute outlives the payment.
+      expect(overdue('fines_me_paid').dispute!.status, DisputeStatus.adjusted);
+    });
+
+    test('a fine without the key has no dispute', () {
+      // The server sends `dispute: null` for a fine nobody disputed...
+      expect(rawFine().containsKey('dispute'), true);
+      expect(overdue('fines_me').dispute, isNull);
+      // ...and an older server leaves the key out altogether.
+      final withoutKey = rawFine()..remove('dispute');
+      expect(Fine.fromJson(withoutKey).dispute, isNull);
+    });
+
+    test('an unknown dispute status maps to unknown', () {
+      final fine = Fine.fromJson({
+        ...rawFine(),
+        'dispute': {'status': 'escalated', 'note': 'A later version of the library.'},
+      });
+      expect(fine.dispute, isNotNull);
+      expect(fine.dispute!.status, DisputeStatus.unknown);
+      expect(fine.dispute!.note, 'A later version of the library.');
+    });
+
+    test('every status the server sends maps to its own value', () {
+      DisputeStatus statusOf(String wire) => Fine.fromJson({
+            ...rawFine(),
+            'dispute': {'status': wire, 'note': null},
+          }).dispute!.status;
+      expect(statusOf('open'), DisputeStatus.open);
+      expect(statusOf('waived'), DisputeStatus.waived);
+      expect(statusOf('adjusted'), DisputeStatus.adjusted);
+      expect(statusOf('upheld'), DisputeStatus.upheld);
+    });
+  });
 }

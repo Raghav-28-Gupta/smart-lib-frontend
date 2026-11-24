@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/core/ui/ui_controller.dart';
 import 'package:smartlib_frontend/core/ui/ui_state.dart';
+import 'package:smartlib_frontend/models/return_report.dart';
 
 void main() {
   late ProviderContainer container;
@@ -53,35 +54,79 @@ void main() {
     });
   });
 
-  group('confirmDialog', () {
+  group('confirmReturnLoan', () {
     test('runs the action, closes the dialog, then confirms', () async {
       String? returned;
-      ui.onConfirmReturnLoan = (id) async => returned = id;
+      ReturnReport? reported = const ReturnReport(category: ReportCategory.other);
+      ui.onConfirmReturnLoan = (id, report) async {
+        returned = id;
+        reported = report;
+      };
       ui.askReturnLoan('loan1');
-      await ui.confirmDialog();
+      await ui.confirmReturnLoan(null);
 
       expect(returned, 'loan1');
+      expect(reported, isNull);
       expect(container.read(uiControllerProvider).dialog, isNull);
       expect(toast(), 'Returned.');
+    });
+
+    test('a report goes to the action with the loan, and the toast thanks for it', () async {
+      String? returned;
+      ReturnReport? reported;
+      ui.onConfirmReturnLoan = (id, report) async {
+        returned = id;
+        reported = report;
+      };
+      const report = ReturnReport(category: ReportCategory.damaged, note: 'Cover torn');
+      ui.askReturnLoan('loan1');
+      await ui.confirmReturnLoan(report);
+
+      expect(returned, 'loan1');
+      expect(reported, same(report));
+      expect(container.read(uiControllerProvider).dialog, isNull);
+      expect(toast(), 'Returned. Thanks for the report.');
     });
 
     test('a refused return shows the reason instead of a false "Returned."', () async {
       // The success toast used to fire unconditionally, before the request
       // even finished -- so a server refusal still read as success.
-      ui.onConfirmReturnLoan = (id) async => throw const ConflictException('This loan has already been returned.');
+      ui.onConfirmReturnLoan = (id, report) async => throw const ConflictException('This loan has already been returned.');
       ui.askReturnLoan('loan1');
-      await ui.confirmDialog();
+      await ui.confirmReturnLoan(null);
 
       expect(toast(), 'This loan has already been returned.');
       expect(container.read(uiControllerProvider).dialog, isNull);
     });
 
+    test('a refused return with a report shows the reason, and does not thank for the report', () async {
+      ui.onConfirmReturnLoan = (id, report) async => throw const ConflictException('This loan has already been returned.');
+      ui.askReturnLoan('loan1');
+      await ui.confirmReturnLoan(const ReturnReport(category: ReportCategory.damaged));
+
+      expect(toast(), 'This loan has already been returned.');
+      expect(container.read(uiControllerProvider).dialog, isNull);
+    });
+  });
+
+  group('confirmDialog', () {
     test('a refused cancellation shows the reason instead of "Booking canceled."', () async {
       ui.onConfirmCancelBooking = (id) async => throw const ConflictException('This booking cannot be cancelled.');
       ui.askCancelBooking('bk1');
       await ui.confirmDialog();
 
       expect(toast(), 'This booking cannot be cancelled.');
+    });
+
+    test('a confirmed cancellation runs the action and toasts', () async {
+      String? canceled;
+      ui.onConfirmCancelBooking = (id) async => canceled = id;
+      ui.askCancelBooking('bk1');
+      await ui.confirmDialog();
+
+      expect(canceled, 'bk1');
+      expect(container.read(uiControllerProvider).dialog, isNull);
+      expect(toast(), 'Booking canceled.');
     });
   });
 }

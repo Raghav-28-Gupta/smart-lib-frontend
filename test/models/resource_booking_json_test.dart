@@ -146,4 +146,97 @@ void main() {
       expect(moved.copyWith(status: BookingStatus.checkedIn).movedFrom, 'Reading Room A · Desk 12');
     });
   });
+
+  group('problem reports', () {
+    List<Map<String, dynamic>> raw(String name) => (fixture(name) as List).cast<Map<String, dynamic>>();
+    List<ResourceBooking> parsed(String name) => raw(name).map(ResourceBooking.fromJson).toList();
+
+    ResourceBooking booking({String resourceId = 's3', bool canReport = false, bool reportOpen = false}) {
+      final start = DateTime.now().subtract(const Duration(minutes: 5));
+      return ResourceBooking(
+        id: 'bk', resourceId: resourceId, resourceName: 'Silent Zone · Desk 3', type: ResourceType.seat, startTime: start,
+        endTime: start.add(const Duration(hours: 1)), status: BookingStatus.inWindow, graceRemainingSeconds: 600,
+        canReport: canReport, reportOpen: reportOpen,
+      );
+    }
+
+    test('parses canReport, reportOpen and resourceId', () {
+      // The seat Aditi checked into: she may report it, and has not.
+      final inWindow = parsed('bookings_me').singleWhere((b) => b.status == BookingStatus.inWindow);
+      expect(inWindow.resourceId, 's3');
+      expect(inWindow.canReport, true);
+      expect(inWindow.reportOpen, false);
+
+      // After she reported that desk, every booking of hers on it says so, and none offers the button.
+      final reported = parsed('bookings_me_reported');
+      final onDesk3 = reported.where((b) => b.resourceId == 's3').toList();
+      expect(onDesk3, isNotEmpty);
+      for (final b in onDesk3) {
+        expect(b.reportOpen, true);
+        expect(b.canReport, false);
+      }
+      // A booking on any other resource reads nothing of it.
+      expect(reported.where((b) => b.resourceId != 's3'), isNotEmpty);
+      for (final b in reported.where((b) => b.resourceId != 's3')) {
+        expect(b.reportOpen, false);
+      }
+    });
+
+    test('older payloads without them parse as false', () {
+      for (final name in ['bookings_me', 'bookings_me_requests', 'bookings_me_library']) {
+        for (final json in raw(name)) {
+          // As an older backend sent it, without any of the three keys.
+          final older = {...json}..remove('canReport')..remove('reportOpen')..remove('resourceId');
+          final b = ResourceBooking.fromJson(older);
+          expect(b.resourceId, '', reason: name);
+          expect(b.canReport, false, reason: name);
+          expect(b.reportOpen, false, reason: name);
+          // Everything else still reads as before.
+          expect(b.id, json['id'], reason: name);
+          expect(b.resourceName, json['resourceName'], reason: name);
+        }
+      }
+      for (final name in ['booking_created', 'booking_checked_in', 'booking_room_requested']) {
+        final older = {...fixture(name) as Map<String, dynamic>}..remove('canReport')..remove('reportOpen')..remove('resourceId');
+        final b = ResourceBooking.fromJson(older);
+        expect(b.canReport, false, reason: name);
+        expect(b.reportOpen, false, reason: name);
+      }
+    });
+
+    test('copyWith keeps them, and sets them when asked', () {
+      final reportable = booking(canReport: true);
+      expect(reportable.copyWith(status: BookingStatus.checkedIn).resourceId, 's3');
+      expect(reportable.copyWith(status: BookingStatus.checkedIn).canReport, true);
+      expect(reportable.copyWith(graceRemainingSeconds: 5).canReport, true);
+      final reported = booking(reportOpen: true);
+      expect(reported.copyWith(status: BookingStatus.checkedIn).reportOpen, true);
+      expect(reported.copyWith(status: BookingStatus.checkedIn).canReport, false);
+
+      final marked = reportable.copyWith(reportOpen: true, canReport: false);
+      expect(marked.reportOpen, true);
+      expect(marked.canReport, false);
+      expect(marked.resourceId, 's3');
+      expect(marked.id, 'bk');
+    });
+
+    test('advancedTo keeps them as the booking moves through its states', () {
+      final start = DateTime.now().add(const Duration(hours: 1));
+      final b = ResourceBooking(
+        id: 'bk', resourceId: 's3', resourceName: 'Silent Zone · Desk 3', type: ResourceType.seat, startTime: start,
+        endTime: start.add(const Duration(hours: 1)), status: BookingStatus.upcomingFar, canReport: true,
+      );
+      final open = b.advancedTo(start.add(const Duration(minutes: 1)));
+      expect(open.status, BookingStatus.inWindow);
+      expect(open.resourceId, 's3');
+      expect(open.canReport, true);
+    });
+
+    test('the categories are spelled as the server spells them', () {
+      expect(ResourceReportCategory.values, [ResourceReportCategory.notWorking, ResourceReportCategory.dirty, ResourceReportCategory.other]);
+      expect(ResourceReportCategory.notWorking.wireName, 'not_working');
+      expect(ResourceReportCategory.dirty.wireName, 'dirty');
+      expect(ResourceReportCategory.other.wireName, 'other');
+    });
+  });
 }

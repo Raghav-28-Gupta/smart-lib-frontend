@@ -15,6 +15,7 @@ import 'package:smartlib_frontend/models/book.dart';
 import 'package:smartlib_frontend/models/borrow_request.dart';
 import 'package:smartlib_frontend/models/loan.dart';
 import 'package:smartlib_frontend/models/reservation.dart';
+import 'package:smartlib_frontend/models/return_report.dart';
 import '../../support/mock_overrides.dart';
 
 /// The demo student's loans without b1, so b1 can be requested.
@@ -37,7 +38,7 @@ class _CleanLoanRepository implements LoanRepository {
   Future<Loan> renew(String loanId) async => _loans.firstWhere((l) => l.id == loanId);
 
   @override
-  Future<void> returnLoan(String loanId) async => _loans.removeWhere((l) => l.id == loanId);
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async => _loans.removeWhere((l) => l.id == loanId);
 
   /// Stands in for a librarian approving: the request becomes this loan.
   void approve(String bookId) => _loans.insert(

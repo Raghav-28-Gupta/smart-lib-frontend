@@ -21,6 +21,9 @@ ResourceBooking _$ResourceBookingFromJson(Map<String, dynamic> json) =>
       declineReason: json['declineReason'] as String?,
       cancelReason: json['cancelReason'] as String?,
       movedFrom: json['movedFrom'] as String?,
+      resourceId: json['resourceId'] as String? ?? '',
+      canReport: json['canReport'] as bool? ?? false,
+      reportOpen: json['reportOpen'] as bool? ?? false,
     );
 
 const _$ResourceTypeEnumMap = {

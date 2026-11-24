@@ -10,6 +10,7 @@ import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/loans/loans_controller.dart';
 import 'package:smartlib_frontend/models/fine.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import 'package:smartlib_frontend/models/return_report.dart';
 import '../../support/mock_overrides.dart';
 
 /// Returns one loan named after the fetch number, so a test can tell a fresh
@@ -30,8 +31,10 @@ class _ScriptedLoanRepository extends MockLoanRepository {
   Object? renewError;
   Object? returnError;
   Completer<void>? renewGate;
+  Completer<void>? returnGate;
   int fetches = 0;
   int renewCalls = 0;
+  int returnCalls = 0;
 
   @override
   Future<List<Loan>> activeLoans() {
@@ -48,9 +51,11 @@ class _ScriptedLoanRepository extends MockLoanRepository {
   }
 
   @override
-  Future<void> returnLoan(String loanId) async {
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
+    returnCalls++;
+    await returnGate?.future;
     if (returnError != null) throw returnError!;
-    return super.returnLoan(loanId);
+    return super.returnLoan(loanId, report: report);
   }
 }
 
@@ -144,6 +149,59 @@ void main() {
     await container.read(loansControllerProvider.notifier).returnLoan('loan1');
     final loans = container.read(loansControllerProvider).value!;
     expect(loans.any((l) => l.id == 'loan1'), false);
+  });
+
+  group('returning with a report', () {
+    const report = ReturnReport(category: ReportCategory.missingPages, note: 'Pages 40-52 are gone');
+
+    test('returnLoan passes the report and still refreshes the fines', () async {
+      final loans = MockLoanRepository();
+      final fines = _CountingFines();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: loans, fines: fines));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+      await container.read(finesControllerProvider.future); // the student has opened My Loans
+      expect(fines.fetches, 1);
+
+      await container.read(loansControllerProvider.notifier).returnLoan('loan3', report: report);
+      await pumpEventQueue(); // the fines refresh is not awaited by the return
+
+      expect(loans.reports.single.loanId, 'loan3');
+      expect(loans.reports.single.report, same(report));
+      expect(container.read(loansControllerProvider).value!.any((l) => l.id == 'loan3'), false);
+      expect(fines.fetches, 2);
+    });
+
+    test('a return without a report passes none', () async {
+      final loans = MockLoanRepository();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: loans));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+
+      await container.read(loansControllerProvider.notifier).returnLoan('loan1');
+
+      expect(loans.reports, isEmpty);
+    });
+
+    test('a refused return with a report is rethrown and refetched as before, and the loan stays', () async {
+      final repo = _ScriptedLoanRepository()..returnError = const ConflictException('This loan has already been returned.');
+      final fines = _CountingFines();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo, fines: fines));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+      await container.read(finesControllerProvider.future);
+
+      await expectLater(
+        container.read(loansControllerProvider.notifier).returnLoan('loan1', report: report),
+        throwsA(isA<ConflictException>().having((e) => e.message, 'message', 'This loan has already been returned.')),
+      );
+      await container.read(loansControllerProvider.future);
+      await pumpEventQueue();
+
+      expect(repo.fetches, 2);
+      expect(fines.fetches, 2);
+      expect(container.read(loansControllerProvider).value!.any((l) => l.id == 'loan1'), true);
+    });
   });
 
   test("a different user logging in gets their own loans, not the last user's", () async {
@@ -320,5 +378,99 @@ void main() {
     repo.renewGate!.complete();
     await Future.wait([first, second]);
     expect(repo.renewCalls, 1);
+  });
+
+  group('a return in flight', () {
+    const report = ReturnReport(category: ReportCategory.damaged);
+
+    Future<(ProviderContainer, _ScriptedLoanRepository)> loaded() async {
+      final repo = _ScriptedLoanRepository()..returnGate = Completer<void>();
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(loans: repo));
+      addTearDown(container.dispose);
+      await container.read(loansControllerProvider.future);
+      return (container, repo);
+    }
+
+    test('a second return of the same loan sends nothing, so the first one\'s answer is the only one', () async {
+      // A second request would be refused ("already returned") and its toast would replace the
+      // first one's "Returned. Thanks for the report."
+      final (container, repo) = await loaded();
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      final first = notifier.returnLoan('loan1', report: report);
+      final second = notifier.returnLoan('loan1');
+      await second; // returns at once: there is nothing to wait for
+      expect(repo.returnCalls, 1);
+      expect(repo.reports, isEmpty);
+
+      repo.returnGate!.complete();
+      await first;
+      expect(repo.returnCalls, 1);
+      expect(repo.reports.single.report, same(report));
+      expect(container.read(loansControllerProvider).value!.any((l) => l.id == 'loan1'), false);
+    });
+
+    test('another loan can be returned meanwhile', () async {
+      final (container, repo) = await loaded();
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      final first = notifier.returnLoan('loan1');
+      final other = notifier.returnLoan('loan2');
+      repo.returnGate!.complete();
+      await Future.wait([first, other]);
+
+      expect(repo.returnCalls, 2);
+      final ids = container.read(loansControllerProvider).value!.map((l) => l.id);
+      expect(ids, isNot(contains('loan1')));
+      expect(ids, isNot(contains('loan2')));
+    });
+
+    test('isReturning says which loans have a return on the wire, and the listeners hear when that changes', () async {
+      final (container, repo) = await loaded();
+      final notifier = container.read(loansControllerProvider.notifier);
+      var heard = 0;
+      container.listen(loansControllerProvider, (_, __) => heard++);
+      expect(notifier.isReturning('loan1'), false);
+
+      final returning = notifier.returnLoan('loan1');
+      expect(notifier.isReturning('loan1'), true);
+      expect(notifier.isReturning('loan2'), false);
+      final heardWhileReturning = heard;
+      expect(heardWhileReturning, greaterThan(0)); // a card watching the list redraws with Return off
+
+      repo.returnGate!.complete();
+      await returning;
+      expect(notifier.isReturning('loan1'), false);
+      expect(heard, greaterThan(heardWhileReturning));
+    });
+
+    test('a refused return lifts the guard, so the student can try again', () async {
+      final (container, repo) = await loaded();
+      repo.returnError = const ConflictException('This loan was closed because the copy was marked lost.');
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      final first = notifier.returnLoan('loan1');
+      repo.returnGate!.complete();
+      await expectLater(first, throwsA(isA<ConflictException>()));
+      expect(notifier.isReturning('loan1'), false);
+
+      repo.returnError = null;
+      await notifier.returnLoan('loan1');
+      expect(repo.returnCalls, 2);
+      expect(container.read(loansControllerProvider).value!.any((l) => l.id == 'loan1'), false);
+    });
+
+    test('a network failure lifts the guard too', () async {
+      final (container, repo) = await loaded();
+      repo.returnError = const ApiException(0, ApiException.networkMessage);
+      final notifier = container.read(loansControllerProvider.notifier);
+
+      final first = notifier.returnLoan('loan1');
+      repo.returnGate!.complete();
+      await expectLater(first, throwsA(isA<ApiException>()));
+
+      expect(notifier.isReturning('loan1'), false);
+      expect(container.read(loansControllerProvider).value!.any((l) => l.id == 'loan1'), true);
+    });
   });
 }

@@ -7,7 +7,8 @@ import '../auth/auth_controller.dart';
 import 'fine_repository.dart';
 
 /// The logged-in student's fines, for the Fines section under My Loans. The
-/// student only reads them: a librarian records payments, waives and lowers.
+/// student reads them and may dispute one: a librarian records payments, waives and
+/// lowers, and answers a dispute.
 class FinesController extends AsyncNotifier<FinesSummary> {
   // Bumped by every build(). This notifier outlives a rebuild (a different student
   // logging in), so a quiet refresh begun for the last student must neither land in
@@ -24,6 +25,48 @@ class FinesController extends AsyncNotifier<FinesSummary> {
     // `isReloading` in `FinesSection`.)
     ref.watch(authControllerProvider.select((s) => s.user?.id));
     return ref.read(fineRepositoryProvider).myFines();
+  }
+
+  /// Sends the student's dispute of [fineId], marks that fine disputed at once ("Under
+  /// review"), then re-reads the fines, so the card ends up showing the server's own
+  /// answer. A refusal is rethrown for the caller to show. A 409 or 404 means the
+  /// picture was out of date (the fine was paid or waived, or disputed from another
+  /// device), so the fines are re-read then too; a network error leaves them as they are.
+  Future<void> dispute(String fineId, String reason) async {
+    final generation = _generation;
+    try {
+      await ref.read(fineRepositoryProvider).dispute(fineId, reason);
+    } on ApiException catch (e) {
+      if (e.meansStaleState) await _readAfterWrite(generation);
+      rethrow;
+    }
+    await _readAfterWrite(generation, disputedFineId: fineId);
+  }
+
+  /// Brings the fines up to date after a write. A fetch already in flight was begun
+  /// before the write, so it may answer without it: it is waited for first, so that its
+  /// answer cannot land after, and the fines are read again. When the write was a dispute
+  /// that went through, that fine is marked disputed at once, as the server answers for
+  /// it, so the card says "Under review" even if the re-read fails. Nothing is done once
+  /// a different student has logged in since the write began ([generation]): the fines
+  /// are theirs by then.
+  Future<void> _readAfterWrite(int generation, {String? disputedFineId}) async {
+    final inFlight = _refreshing;
+    if (inFlight != null) await inFlight;
+    if (generation != _generation) return;
+    if (disputedFineId != null) {
+      final current = state.value;
+      if (current != null && !state.hasError && !state.isLoading) {
+        state = AsyncValue.data(FinesSummary(
+          fines: [
+            for (final f in current.fines)
+              f.id == disputedFineId ? f.withDispute(const FineDispute(status: DisputeStatus.open)) : f,
+          ],
+          outstandingTotal: current.outstandingTotal,
+        ));
+      }
+    }
+    await refreshQuietly();
   }
 
   Future<void>? _refreshing;

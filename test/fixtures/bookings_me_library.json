@@ -1,12 +1,12 @@
 [
   {
-    "id": "5ad3fe03-f052-45a4-a60b-aa26bff33066",
+    "id": "361686da-c914-4c7d-82d0-c843c35f8deb",
     "userId": "u1",
     "resourceId": "r1",
     "resourceName": "Group Room 201 · 4 seats",
     "resourceType": "room",
-    "startTime": "2026-11-21T21:17:17.000Z",
-    "endTime": "2026-11-21T22:17:17.000Z",
+    "startTime": "2026-11-22T17:34:13.000Z",
+    "endTime": "2026-11-22T18:34:13.000Z",
     "status": "expired",
     "frontendStatus": "expired",
     "graceRemainingSeconds": 0,
@@ -14,27 +14,31 @@
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": false,
+    "reportOpen": false
   },
   {
-    "id": "d835cf50-aadc-4b5f-9e00-4e501c1afb93",
+    "id": "6b4a5ec4-5aae-4b00-b3ea-2a5a3a12b593",
     "userId": "u1",
     "resourceId": "s3",
     "resourceName": "Silent Zone · Desk 3",
     "resourceType": "seat",
-    "startTime": "2026-11-21T21:30:06.000Z",
-    "endTime": "2026-11-21T22:30:06.000Z",
+    "startTime": "2026-11-22T17:47:02.000Z",
+    "endTime": "2026-11-22T18:47:02.000Z",
     "status": "checked_in",
     "frontendStatus": "checkedIn",
     "graceRemainingSeconds": 0,
-    "checkedInAt": "2026-11-21T21:32:21.316Z",
+    "checkedInAt": "2026-11-22T17:49:17.573Z",
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": true,
+    "reportOpen": false
   },
   {
-    "id": "bbd4e522-60f6-4307-a25a-ef42f27cdc9f",
+    "id": "ecfebb5b-2fe7-42ac-b95c-400d4c4e999d",
     "userId": "u1",
     "resourceId": "r1",
     "resourceName": "Group Room 201 · 4 seats",
@@ -48,10 +52,12 @@
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": false,
+    "reportOpen": false
   },
   {
-    "id": "56dcede6-5b45-4d31-93a8-547a7658d493",
+    "id": "a7b4e1c5-965d-4379-a56c-2ebbed899499",
     "userId": "u1",
     "resourceId": "s3",
     "resourceName": "Silent Zone · Desk 3",
@@ -65,10 +71,12 @@
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": true,
+    "reportOpen": false
   },
   {
-    "id": "22c70901-8798-43ee-a64d-991d586b9fd9",
+    "id": "c2415343-b308-49db-a11c-4f530ab8e6b3",
     "userId": "u1",
     "resourceId": "r1",
     "resourceName": "Group Room 201 · 4 seats",
@@ -82,10 +90,12 @@
     "expiresAt": "2026-11-23T08:45:00.000Z",
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": false,
+    "reportOpen": false
   },
   {
-    "id": "5d6536fd-2175-4dab-b11d-0a2a9306f373",
+    "id": "09ed479e-81c5-4ee3-9d83-39563fad6739",
     "userId": "u1",
     "resourceId": "s1",
     "resourceName": "Reading Room A · Desk 12",
@@ -99,10 +109,12 @@
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": "Room closed for maintenance",
-    "movedFrom": null
+    "movedFrom": null,
+    "canReport": false,
+    "reportOpen": false
   },
   {
-    "id": "2c08f119-ca42-4c31-80d8-541444a9cd75",
+    "id": "af406eb7-5ddc-4d80-b216-7a1ed281d250",
     "userId": "u1",
     "resourceId": "s2",
     "resourceName": "Reading Room A · Desk 14",
@@ -116,6 +128,8 @@
     "expiresAt": null,
     "declineReason": null,
     "cancelReason": null,
-    "movedFrom": "Reading Room A · Desk 12"
+    "movedFrom": "Reading Room A · Desk 12",
+    "canReport": true,
+    "reportOpen": false
   }
 ]

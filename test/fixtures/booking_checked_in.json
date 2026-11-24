@@ -1,17 +1,19 @@
 {
-  "id": "d835cf50-aadc-4b5f-9e00-4e501c1afb93",
+  "id": "6b4a5ec4-5aae-4b00-b3ea-2a5a3a12b593",
   "userId": "u1",
   "resourceId": "s3",
   "resourceName": "Silent Zone · Desk 3",
   "resourceType": "seat",
-  "startTime": "2026-11-21T21:30:06.000Z",
-  "endTime": "2026-11-21T22:30:06.000Z",
+  "startTime": "2026-11-22T17:47:02.000Z",
+  "endTime": "2026-11-22T18:47:02.000Z",
   "status": "checked_in",
   "frontendStatus": "checkedIn",
   "graceRemainingSeconds": 0,
-  "checkedInAt": "2026-11-21T21:32:21.316Z",
+  "checkedInAt": "2026-11-22T17:49:17.573Z",
   "expiresAt": null,
   "declineReason": null,
   "cancelReason": null,
-  "movedFrom": null
+  "movedFrom": null,
+  "canReport": true,
+  "reportOpen": false
 }

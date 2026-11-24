@@ -1,5 +1,5 @@
 {
-  "id": "22c70901-8798-43ee-a64d-991d586b9fd9",
+  "id": "c2415343-b308-49db-a11c-4f530ab8e6b3",
   "userId": "u1",
   "resourceId": "r1",
   "resourceName": "Group Room 201 · 4 seats",
@@ -13,5 +13,7 @@
   "expiresAt": "2026-11-23T08:45:00.000Z",
   "declineReason": null,
   "cancelReason": null,
-  "movedFrom": null
+  "movedFrom": null,
+  "canReport": false,
+  "reportOpen": false
 }

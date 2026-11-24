@@ -3,11 +3,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../models/loan.dart';
+import '../../models/return_report.dart';
 
 abstract class LoanRepository {
   Future<List<Loan>> activeLoans();
   Future<Loan> renew(String loanId);
-  Future<void> returnLoan(String loanId);
+  Future<void> returnLoan(String loanId, {ReturnReport? report});
 }
 
 class HttpLoanRepository implements LoanRepository {
@@ -28,9 +29,14 @@ class HttpLoanRepository implements LoanRepository {
   }
 
   @override
-  Future<void> returnLoan(String loanId) async {
-    // The response is the returned loan; the list just drops it.
-    await guardApi(() => _dio.post<Object?>('/loans/${Uri.encodeComponent(loanId)}/return'));
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
+    // The response is the returned loan; the list just drops it. A report rides
+    // in the same request, so the server saves it together with the return or
+    // not at all; without one the request has no body, as it always had.
+    await guardApi(() => _dio.post<Object?>(
+          '/loans/${Uri.encodeComponent(loanId)}/return',
+          data: report == null ? null : {'report': report.toJson()},
+        ));
   }
 }
 
@@ -47,6 +53,10 @@ class MockLoanRepository implements LoanRepository {
 
   late List<Loan> _loans;
 
+  /// The problem reports that came with a return, in order (a return without
+  /// one adds nothing).
+  final reports = <({String loanId, ReturnReport report})>[];
+
   @override
   Future<List<Loan>> activeLoans() async => List.of(_loans);
 
@@ -62,8 +72,9 @@ class MockLoanRepository implements LoanRepository {
   }
 
   @override
-  Future<void> returnLoan(String loanId) async {
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
     _loans.removeWhere((l) => l.id == loanId);
+    if (report != null) reports.add((loanId: loanId, report: report));
   }
 }
 

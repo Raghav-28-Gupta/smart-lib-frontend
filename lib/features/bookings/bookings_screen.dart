@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/api_exception.dart';
 import '../../core/clock.dart';
 import '../../core/time_format.dart';
 import '../../core/ui/ui_controller.dart';
@@ -9,6 +10,7 @@ import '../../models/resource_booking.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
 import '../../widgets/loading_skeleton.dart';
+import '../../widgets/note_field.dart';
 import '../../widgets/pending_refresh.dart';
 import 'bookings_controller.dart';
 
@@ -51,6 +53,26 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
     final mm = seconds ~/ 60;
     final ss = seconds % 60;
     return '$mm:${ss < 10 ? '0' : ''}$ss';
+  }
+
+  /// Under the status: "Reported" once the student has an open report on this seat or
+  /// room, else a **Report a problem** button when the server says this booking
+  /// entitles them to one. Nothing for any other booking. Several cards say the same
+  /// words, so the button's label for a screen reader names the seat or room.
+  Widget _reportLine(ResourceBooking b) {
+    if (b.reportOpen) return const Text('Reported', style: TextStyle(fontStyle: FontStyle.italic));
+    if (!b.canReport) return const SizedBox.shrink();
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        onPressed: () => _askToReport(context, b),
+        child: Semantics(
+          label: 'Report a problem with ${b.resourceName}',
+          excludeSemantics: true,
+          child: const Text('Report a problem'),
+        ),
+      ),
+    );
   }
 
   Widget _cancelButton(ResourceBooking b) => Expanded(child: TextButton(
@@ -135,6 +157,7 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
                     Text(b.timeSlot),
                     if (b.movedFrom != null) Text('Moved from ${b.movedFrom} by the library'),
                     ..._statusLines(b),
+                    _reportLine(b),
                   ]),
                 ));
               },
@@ -142,6 +165,117 @@ class _BookingsScreenState extends ConsumerState<BookingsScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+String _categoryLabel(ResourceReportCategory category) => switch (category) {
+      ResourceReportCategory.notWorking => 'Not working',
+      ResourceReportCategory.dirty => 'Dirty',
+      ResourceReportCategory.other => 'Other',
+    };
+
+Future<void> _askToReport(BuildContext context, ResourceBooking booking) =>
+    showDialog<void>(context: context, builder: (_) => _ReportDialog(booking: booking));
+
+/// "Report a problem" with a seat or room: what is wrong (none is chosen for the
+/// student) and a note, which Other requires. Send is off until a category is chosen,
+/// the trimmed note fits the limit ([noteTooLong]: the server's count, shown by the
+/// shared [NoteField]), and the note is there for Other; a note that is only
+/// spaces is no note and goes as none. On a refusal the dialog stays with the student's
+/// choices so they can send again or cancel; while the answer is awaited Send is off, so
+/// a second tap can't send a second report.
+class _ReportDialog extends ConsumerStatefulWidget {
+  const _ReportDialog({required this.booking});
+
+  final ResourceBooking booking;
+
+  @override
+  ConsumerState<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends ConsumerState<_ReportDialog> {
+  final _note = TextEditingController();
+  ResourceReportCategory? _category;
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  String get _trimmedNote => _note.text.trim();
+
+  bool get _valid {
+    final category = _category;
+    if (category == null || _sending) return false;
+    final note = _trimmedNote;
+    if (noteTooLong(note)) return false;
+    return category != ResourceReportCategory.other || note.isNotEmpty;
+  }
+
+  Future<void> _send() async {
+    final category = _category;
+    if (category == null || !_valid) return;
+    final note = _trimmedNote;
+    final booking = widget.booking;
+    setState(() => _sending = true);
+    final failure = await ref.read(uiControllerProvider.notifier).attempt(
+          () => ref.read(bookingsControllerProvider.notifier).reportProblem(booking, category, note.isEmpty ? null : note),
+          success: 'Thanks, the library has your report.',
+        );
+    if (!mounted) return;
+    // An expired session is on its way to the login screen, which says so, and the
+    // dialog must not be left on top of it. Any other refusal was toasted by
+    // `attempt` and the dialog stays, with the student's choices.
+    if (failure == null || failure is UnauthorizedException) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final category = _category;
+    return AlertDialog(
+      title: const Text('Report a problem'),
+      scrollable: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.booking.resourceName, style: Theme.of(context).textTheme.titleSmall),
+          RadioGroup<ResourceReportCategory>(
+            groupValue: category,
+            onChanged: (chosen) {
+              if (!_sending) setState(() => _category = chosen);
+            },
+            child: Column(
+              children: [
+                for (final option in ResourceReportCategory.values)
+                  RadioListTile<ResourceReportCategory>(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    value: option,
+                    title: Text(_categoryLabel(option)),
+                  ),
+              ],
+            ),
+          ),
+          NoteField(
+            controller: _note,
+            enabled: !_sending,
+            label: category == ResourceReportCategory.other ? 'Note (required)' : 'Note (optional)',
+            onChanged: (_) => setState(() {}),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(onPressed: _valid ? _send : null, child: const Text('Send')),
+      ],
     );
   }
 }

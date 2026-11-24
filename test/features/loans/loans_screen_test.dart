@@ -17,21 +17,42 @@ import 'package:smartlib_frontend/features/loans/loan_repository.dart';
 import 'package:smartlib_frontend/features/loans/loans_controller.dart';
 import 'package:smartlib_frontend/features/loans/loans_screen.dart';
 import 'package:smartlib_frontend/features/catalog/book_repository.dart';
+import 'package:smartlib_frontend/features/notices/notice_repository.dart';
+import 'package:smartlib_frontend/features/notices/notices_controller.dart';
 import 'package:smartlib_frontend/features/waitlist/waitlist_repository.dart';
 import 'package:smartlib_frontend/models/app_user.dart';
 import 'package:smartlib_frontend/models/borrow_request.dart';
 import 'package:smartlib_frontend/models/fine.dart';
 import 'package:smartlib_frontend/models/loan.dart';
+import 'package:smartlib_frontend/models/notice.dart';
 import 'package:smartlib_frontend/models/reservation.dart';
+import 'package:smartlib_frontend/models/return_report.dart';
 import 'package:smartlib_frontend/widgets/loading_skeleton.dart';
 import '../../support/fixtures.dart';
 import '../../support/mock_overrides.dart';
 
 class _RefusingLoanRepository extends MockLoanRepository {
   @override
-  Future<void> returnLoan(String loanId) async => throw const ConflictException('This loan has already been returned.');
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async => throw const ConflictException('This loan has already been returned.');
   @override
   Future<Loan> renew(String loanId) async => throw const ConflictException('1 student is waiting for this title.');
+}
+
+/// The mock loans, with the server's answer to a return held back until [release], and
+/// then refused with [refusal] when that is set.
+class _SlowReturn extends MockLoanRepository {
+  final release = Completer<void>();
+  ApiException? refusal;
+  int returns = 0;
+
+  @override
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
+    returns++;
+    await release.future;
+    final refused = refusal;
+    if (refused != null) throw refused;
+    return super.returnLoan(loanId, report: report);
+  }
 }
 
 BorrowRequest _request(String id, String bookId, String title, BorrowRequestStatus status, {Duration age = Duration.zero, String? reason}) {
@@ -108,6 +129,26 @@ class _FailingFines extends MockFineRepository {
   Future<FinesSummary> myFines() async => throw const ApiException(500, 'The library server had a problem.');
 }
 
+/// The mock fines where the server refuses a dispute with [refusal] until a test
+/// clears it, and where the answer to a dispute can be held back until [release].
+class _DisputeScript extends MockFineRepository {
+  _DisputeScript({super.fines});
+
+  ApiException? refusal;
+  Completer<void>? release;
+
+  @override
+  Future<void> dispute(String fineId, String reason) async {
+    await release?.future;
+    final refused = refusal;
+    if (refused != null) {
+      disputes.add((fineId: fineId, reason: reason)); // it reached the server, which said no
+      throw refused;
+    }
+    return super.dispute(fineId, reason);
+  }
+}
+
 /// The mock loans, where returning or renewing the overdue loan3 makes the
 /// "server" write a ₹30 fine into [fines], as the real one does for a late loan.
 class _LateLoans extends MockLoanRepository {
@@ -117,8 +158,8 @@ class _LateLoans extends MockLoanRepository {
   void _writeFine() => fines.fines = [_fine('late-fine'), ...fines.fines];
 
   @override
-  Future<void> returnLoan(String loanId) async {
-    await super.returnLoan(loanId);
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
+    await super.returnLoan(loanId, report: report);
     if (loanId == 'loan3') _writeFine();
   }
 
@@ -144,7 +185,7 @@ class _ClosedElsewhere extends MockLoanRepository {
   }
 
   @override
-  Future<void> returnLoan(String loanId) async => _refuse();
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async => _refuse();
   @override
   Future<Loan> renew(String loanId) async => _refuse();
 }
@@ -173,6 +214,35 @@ class _GatedFines extends MockFineRepository {
     await gate?.future;
     if (fail) throw const ApiException(500, 'The library server had a problem.');
     return FinesSummary(fines: answer, outstandingTotal: answer.fold(0.0, (t, f) => t + f.amount));
+  }
+}
+
+/// The mock notices, counting fetches, with the network failing on demand.
+class _CountingNotices extends MockNoticeRepository {
+  _CountingNotices({super.notices});
+  int fetches = 0;
+  bool offline = false;
+  @override
+  Future<List<Notice>> myNotices() {
+    fetches++;
+    return offline ? Future.error(const ApiException(0, ApiException.networkMessage)) : super.myNotices();
+  }
+}
+
+/// Serves [served] as it was when the request was made, with the answer held back
+/// while [gate] is set: a student's notices that are still on their way.
+class _GatedNotices extends MockNoticeRepository {
+  List<Notice> served = [];
+  bool failing = false;
+  Completer<void>? gate;
+  @override
+  Future<List<Notice>> myNotices() async {
+    final gate = this.gate;
+    final answer = List.of(served);
+    final fail = failing;
+    await gate?.future;
+    if (fail) throw const ApiException(500, 'The library server had a problem.');
+    return answer;
   }
 }
 
@@ -217,14 +287,25 @@ Fine _fine(
   FineStatus status = FineStatus.outstanding,
   String? note,
   DateTime? date,
+  FineDispute? dispute,
 }) =>
     Fine(
       id: id, reason: reason, item: item, amount: amount, originalAmount: was ?? amount,
       status: status, date: date ?? DateTime.now().subtract(const Duration(days: 2)), note: note,
+      dispute: dispute,
     );
 
 /// The fines a real backend returned for the demo student's returned overdue loan.
 List<Fine> _captured(String name) => FinesSummary.fromJson(fixture(name) as Map<String, dynamic>).fines;
+
+Notice _notice(
+  String id, {
+  NoticeKind kind = NoticeKind.overdueReminder,
+  String title = 'Overdue book reminder',
+  String body = 'Your copy of Operating System Concepts is 3 days overdue.',
+  DateTime? createdAt,
+}) =>
+    Notice(id: id, kind: kind, title: title, body: body, createdAt: createdAt ?? DateTime.now().subtract(const Duration(hours: 5)));
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -232,6 +313,8 @@ Future<void> _pumpLoans(
   WidgetTester tester, {
   MockFineRepository? fines,
   LoanRepository? loans,
+  MockNoticeRepository? notices,
+  MockBorrowRequestRepository? borrowRequests,
   bool confirmDialogs = false,
 }) async {
   // Tall, so the Fines section below the four seeded loans is built.
@@ -239,7 +322,7 @@ Future<void> _pumpLoans(
   tester.view.physicalSize = const Size(800, 3000);
   addTearDown(tester.view.reset);
   await tester.pumpWidget(ProviderScope(
-    overrides: mockRepositoryOverrides(fines: fines, loans: loans),
+    overrides: mockRepositoryOverrides(fines: fines, loans: loans, notices: notices, borrowRequests: borrowRequests),
     child: MaterialApp(
       theme: buildSmartLibTheme(),
       builder: withToasts,
@@ -300,6 +383,144 @@ void main() {
     expect(find.text('Returned.'), findsNothing);
     await tester.pump(const Duration(seconds: 3));
     expect(find.text('Return').evaluate().length, before);
+  });
+
+  group('returning a book from My Loans with a report', () {
+    Future<void> reportAndReturn(WidgetTester tester, String choice, {String? note}) async {
+      await tester.tap(find.widgetWithText(TextButton, 'Return').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Report a problem with this copy'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(choice));
+      await tester.pumpAndSettle();
+      if (note != null) {
+        await tester.enterText(find.byType(TextField), note);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.widgetWithText(FilledButton, 'Return'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the report goes with the return, the loan leaves the list and the toast thanks for it', (tester) async {
+      final loans = MockLoanRepository();
+      await _pumpLoans(tester, loans: loans, confirmDialogs: true);
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(4));
+
+      await reportAndReturn(tester, 'Missing pages', note: 'Pages 40-52 are gone');
+
+      expect(loans.reports, hasLength(1));
+      expect(loans.reports.single.loanId, 'loan1');
+      expect(loans.reports.single.report.toJson(), {'category': 'missing_pages', 'note': 'Pages 40-52 are gone'});
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(3));
+      expect(find.text('Returned. Thanks for the report.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a refused return with a report shows the server\'s message and no thanks, and the loan stays', (tester) async {
+      await _pumpLoans(tester, loans: _RefusingLoanRepository(), confirmDialogs: true);
+
+      await reportAndReturn(tester, 'Damaged');
+
+      expect(find.text('This loan has already been returned.'), findsOneWidget);
+      expect(find.text('Returned. Thanks for the report.'), findsNothing);
+      expect(find.text('Returned.'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(4));
+      await tester.pump(const Duration(seconds: 3));
+    });
+  });
+
+  group('a return still on the wire', () {
+    // The card's Return, by position: loan1 is the first card.
+    Finder cardReturn(int index) => find.widgetWithText(TextButton, 'Return').at(index);
+    bool cardReturnEnabled(WidgetTester tester, int index) => tester.widget<TextButton>(cardReturn(index)).onPressed != null;
+
+    // Returns the first loan with a damage report, and leaves the server's answer pending.
+    Future<void> returnFirstWithReport(WidgetTester tester) async {
+      await tester.tap(cardReturn(0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Report a problem with this copy'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Damaged'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Return'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets("the card's Return is off for that loan until the answer comes, so a second return cannot replace the thanks with a refusal", (tester) async {
+      final loans = _SlowReturn();
+      await _pumpLoans(tester, loans: loans, confirmDialogs: true);
+      expect(cardReturnEnabled(tester, 0), true);
+
+      await returnFirstWithReport(tester);
+
+      expect(loans.returns, 1);
+      expect(find.text('Return this book?'), findsNothing); // the dialog closed at once
+      expect(cardReturnEnabled(tester, 0), false);
+      expect(cardReturnEnabled(tester, 1), true); // another loan is not held up
+
+      // A tap on the disabled button asks nothing: no dialog, no second request.
+      await tester.tap(cardReturn(0), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text('Return this book?'), findsNothing);
+      expect(loans.returns, 1);
+
+      loans.release.complete();
+      await tester.pumpAndSettle();
+
+      expect(loans.returns, 1);
+      expect(find.text('Returned. Thanks for the report.'), findsOneWidget);
+      expect(find.text('This loan has already been returned.'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(3)); // loan1 has left the list
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('another loan can be returned while the first is on the wire', (tester) async {
+      final loans = _SlowReturn();
+      await _pumpLoans(tester, loans: loans, confirmDialogs: true);
+      await returnFirstWithReport(tester);
+
+      await tester.tap(cardReturn(1));
+      await tester.pumpAndSettle();
+      expect(find.text('Return this book?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Return'));
+      await tester.pumpAndSettle();
+      expect(loans.returns, 2);
+
+      loans.release.complete();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(2));
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a refused return gives the card its Return back, and says why', (tester) async {
+      final loans = _SlowReturn()..refusal = const ConflictException('This loan was closed because the copy was marked lost.');
+      await _pumpLoans(tester, loans: loans, confirmDialogs: true);
+
+      await returnFirstWithReport(tester);
+      expect(cardReturnEnabled(tester, 0), false);
+
+      loans.release.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text('This loan was closed because the copy was marked lost.'), findsOneWidget);
+      expect(find.text('Returned. Thanks for the report.'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Return'), findsNWidgets(4));
+      expect(cardReturnEnabled(tester, 0), true);
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    testWidgets('a network failure gives the card its Return back', (tester) async {
+      final loans = _SlowReturn()..refusal = const ApiException(0, ApiException.networkMessage);
+      await _pumpLoans(tester, loans: loans, confirmDialogs: true);
+
+      await returnFirstWithReport(tester);
+      loans.release.complete();
+      await tester.pumpAndSettle();
+
+      expect(find.text(ApiException.networkMessage), findsOneWidget);
+      expect(cardReturnEnabled(tester, 0), true);
+      await tester.pump(const Duration(seconds: 3));
+    });
   });
 
   testWidgets('a refused renewal says why', (tester) async {
@@ -550,6 +771,347 @@ void main() {
     });
   });
 
+  group('disputing a fine', () {
+    Finder disputeButtons() => find.widgetWithText(TextButton, 'Dispute');
+    Finder reasonField() => find.byType(TextField);
+    Finder sendButton() => find.widgetWithText(FilledButton, 'Send');
+
+    // Opens the dialog on the first Dispute button.
+    Future<void> openDialog(WidgetTester tester) async {
+      await tester.tap(disputeButtons().first);
+      await tester.pumpAndSettle();
+    }
+
+    // The toast stays up for 2.4 s; let it go so no timer outlives the test.
+    Future<void> letToastGo(WidgetTester tester) => tester.pump(const Duration(seconds: 3));
+
+    testWidgets('an outstanding fine shows Dispute and an open one shows "Under review"', (tester) async {
+      // The fine the backend wrote for the overdue return, and an adjusted one: both still owed.
+      await _pumpLoans(tester, fines: MockFineRepository(fines: [
+        ..._captured('fines_me'),
+        _fine('f2', item: 'Sapiens', amount: 20, was: 30, status: FineStatus.adjusted, note: 'Returned during exam week'),
+      ]));
+      expect(disputeButtons(), findsNWidgets(2));
+      expect(find.text('Under review'), findsNothing);
+
+      // After the student disputed, the backend's own answer: the fine is still
+      // outstanding, and the button has made way for the status.
+      await tester.pumpWidget(const SizedBox());
+      await _pumpLoans(tester, fines: MockFineRepository(fines: _captured('fines_me_disputed')));
+      expect(find.text('Under review'), findsOneWidget);
+      expect(disputeButtons(), findsNothing);
+      expect(find.text('Outstanding'), findsOneWidget);
+      expect(find.text('Outstanding: ₹30'), findsOneWidget);
+    });
+
+    testWidgets('the dialog needs a reason and sends it', (tester) async {
+      final fines = MockFineRepository(fines: [_fine('f1'), _fine('f2', item: 'Sapiens')]);
+      await _pumpLoans(tester, fines: fines);
+      await openDialog(tester);
+
+      expect(find.text('Dispute this fine'), findsOneWidget);
+      expect(find.text('Why do you think this fine is wrong?'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Cancel'), findsOneWidget);
+
+      // Nothing to send until there is something to say: not even spaces.
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNull);
+      await tester.tap(sendButton());
+      await tester.pump();
+      expect(fines.disputes, isEmpty);
+      await tester.enterText(reasonField(), '   ');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNull);
+
+      // At most 300 characters, as the server counts them: 301 are refused (and the
+      // student's text is left alone, not cut), 300 are not.
+      await tester.enterText(reasonField(), 'x' * 301);
+      await tester.pump();
+      expect(tester.widget<TextField>(reasonField()).controller!.text.length, 301);
+      expect(find.text('301/300'), findsOneWidget);
+      expect(find.text('At most 300 characters'), findsOneWidget);
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNull);
+      await tester.enterText(reasonField(), 'x' * 300);
+      await tester.pump();
+      expect(find.text('300/300'), findsOneWidget);
+      expect(find.text('At most 300 characters'), findsNothing);
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNotNull);
+
+      await tester.enterText(reasonField(), '  The desk scanned my return late.  ');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNotNull);
+      await tester.tap(sendButton());
+      await tester.pumpAndSettle();
+
+      // Sent once, trimmed, for the fine whose button was pressed.
+      expect(fines.disputes, [(fineId: 'f1', reason: 'The desk scanned my return late.')]);
+      expect(find.text('Dispute this fine'), findsNothing);
+      expect(find.text('Dispute sent.'), findsOneWidget);
+      // The first card now reads "Under review"; the other fine still offers Dispute.
+      expect(find.text('Under review'), findsOneWidget);
+      expect(disputeButtons(), findsOneWidget);
+      await letToastGo(tester);
+    });
+
+    testWidgets('Cancel closes the dialog and sends nothing', (tester) async {
+      final fines = MockFineRepository(fines: [_fine('f1')]);
+      await _pumpLoans(tester, fines: fines);
+      await openDialog(tester);
+      await tester.enterText(reasonField(), 'It was returned on time.');
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dispute this fine'), findsNothing);
+      expect(fines.disputes, isEmpty);
+      expect(disputeButtons(), findsOneWidget);
+      expect(find.text('Under review'), findsNothing);
+    });
+
+    testWidgets('a refusal keeps the dialog and shows the message', (tester) async {
+      final fines = _DisputeScript(fines: [_fine('f1')])
+        ..refusal = const ConflictException("You've already disputed this fine.");
+      await _pumpLoans(tester, fines: fines);
+      await openDialog(tester);
+      await tester.enterText(reasonField(), 'It was returned on time.');
+      await tester.pump();
+      await tester.tap(sendButton());
+      await tester.pumpAndSettle();
+
+      // The server's own words, and the student's own words still in the field.
+      expect(find.text("You've already disputed this fine."), findsOneWidget);
+      expect(find.text('Dispute this fine'), findsOneWidget);
+      expect(tester.widget<TextField>(reasonField()).controller!.text, 'It was returned on time.');
+      expect(find.text('Dispute sent.'), findsNothing);
+      expect(fines.disputes.length, 1);
+      // Send is usable again, and the text goes out on a second try.
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNotNull);
+
+      fines.refusal = null;
+      await tester.tap(sendButton());
+      await tester.pumpAndSettle();
+      expect(fines.disputes.length, 2);
+      expect(fines.disputes.last.reason, 'It was returned on time.');
+      expect(find.text('Dispute this fine'), findsNothing);
+      expect(find.text('Under review'), findsOneWidget);
+      await letToastGo(tester);
+    });
+
+    testWidgets('a network failure keeps the dialog and says the library cannot be reached', (tester) async {
+      final fines = _DisputeScript(fines: [_fine('f1')])..refusal = const ApiException(0, ApiException.networkMessage);
+      await _pumpLoans(tester, fines: fines);
+      await openDialog(tester);
+      await tester.enterText(reasonField(), 'It was returned on time.');
+      await tester.pump();
+      await tester.tap(sendButton());
+      await tester.pumpAndSettle();
+
+      expect(find.text(ApiException.networkMessage), findsOneWidget);
+      expect(find.text('Dispute this fine'), findsOneWidget);
+      expect(tester.widget<TextField>(reasonField()).controller!.text, 'It was returned on time.');
+      await letToastGo(tester);
+    });
+
+    testWidgets('a second tap on Send while the first is in flight sends nothing', (tester) async {
+      final fines = _DisputeScript(fines: [_fine('f1')])..release = Completer<void>();
+      await _pumpLoans(tester, fines: fines);
+      await openDialog(tester);
+      await tester.enterText(reasonField(), 'It was returned on time.');
+      await tester.pump();
+
+      await tester.tap(sendButton());
+      await tester.pump();
+      // The answer has not come: Send is off and the field cannot change under it.
+      expect(tester.widget<FilledButton>(sendButton()).onPressed, isNull);
+      await tester.tap(sendButton());
+      await tester.pump();
+      expect(find.text('Dispute this fine'), findsOneWidget);
+
+      fines.release!.complete();
+      await tester.pumpAndSettle();
+      expect(fines.disputes.length, 1);
+      expect(find.text('Dispute this fine'), findsNothing);
+      expect(find.text('Under review'), findsOneWidget);
+      await letToastGo(tester);
+    });
+
+    testWidgets("an upheld dispute shows the library's note", (tester) async {
+      await _pumpLoans(tester, fines: MockFineRepository(fines: [
+        _fine('f1', dispute: const FineDispute(status: DisputeStatus.upheld, note: 'The scan log shows it came back a day late.')),
+      ]));
+
+      expect(find.text('The library kept this fine.'), findsOneWidget);
+      expect(find.text('The scan log shows it came back a day late.'), findsOneWidget);
+      // It stays owed, and the one dispute is spent.
+      expect(find.text('Outstanding'), findsOneWidget);
+      expect(find.text('Outstanding: ₹30'), findsOneWidget);
+      expect(disputeButtons(), findsNothing);
+      expect(find.text('Under review'), findsNothing);
+    });
+
+    testWidgets('an upheld dispute with no note shows only that the fine was kept', (tester) async {
+      await _pumpLoans(tester, fines: MockFineRepository(fines: [
+        _fine('f1', dispute: const FineDispute(status: DisputeStatus.upheld)),
+      ]));
+
+      expect(find.text('The library kept this fine.'), findsOneWidget);
+      expect(disputeButtons(), findsNothing);
+    });
+
+    testWidgets('a paid or waived fine has no Dispute button', (tester) async {
+      await _pumpLoans(tester, fines: MockFineRepository(fines: [
+        ..._captured('fines_me_paid'),
+        _fine('f2', item: 'Sapiens', amount: 0, was: 40, status: FineStatus.waived, note: 'Medical leave'),
+        _fine('f3', item: 'Atomic Habits', status: FineStatus.unknown),
+      ]));
+
+      expect(find.text('Paid'), findsOneWidget);
+      expect(find.text('Waived'), findsOneWidget);
+      expect(disputeButtons(), findsNothing);
+      expect(find.text('Under review'), findsNothing);
+    });
+
+    testWidgets('a closed dispute never brings the button back, and repeats nothing the fine already says', (tester) async {
+      // The adjusted fine the backend captured: its dispute closed with the adjustment.
+      await _pumpLoans(tester, fines: MockFineRepository(fines: [
+        ..._captured('fines_me_adjusted'),
+        _fine('f2', item: 'Sapiens', amount: 0, was: 40, status: FineStatus.waived, note: 'Medical leave',
+            dispute: const FineDispute(status: DisputeStatus.waived, note: 'Medical leave')),
+        // A dispute status this version does not know shows nothing, and is still a dispute.
+        _fine('f3', item: 'Atomic Habits', dispute: const FineDispute(status: DisputeStatus.unknown, note: 'A later reply.')),
+      ]));
+
+      expect(disputeButtons(), findsNothing);
+      expect(find.text('Under review'), findsNothing);
+      expect(find.text('The library kept this fine.'), findsNothing);
+      expect(find.text('A later reply.'), findsNothing);
+      // The outcome reads from the fine itself, once each.
+      expect(find.text('Library note: Returned during exam week'), findsOneWidget);
+      expect(find.text('Library note: Medical leave'), findsOneWidget);
+      expect(find.text('Medical leave'), findsNothing);
+      expect(find.text('Adjusted'), findsOneWidget);
+      expect(find.text('Waived'), findsOneWidget);
+    });
+  });
+
+  group('the Library notices section', () {
+    // The accent colour the escalation is drawn in, from the theme the screen runs under.
+    Color accent(WidgetTester tester) => Theme.of(tester.element(find.byType(LoansScreen))).colorScheme.primary;
+
+    Color? titleColour(WidgetTester tester, String title) => tester.widget<Text>(find.text(title)).style?.color;
+
+    testWidgets("shows each notice's title, body and date, above the requests", (tester) async {
+      final threeDaysAgo = DateTime.now().subtract(const Duration(days: 3));
+      final yesterday = DateTime.now().subtract(const Duration(days: 1));
+      await _pumpLoans(
+        tester,
+        notices: MockNoticeRepository(notices: [
+          _notice('n1', title: 'Your fine stands', body: 'The library kept your ₹30 fine for Sapiens.', kind: NoticeKind.disputeOutcome, createdAt: yesterday),
+          _notice('n2', createdAt: threeDaysAgo),
+        ]),
+        borrowRequests: MockBorrowRequestRepository(MockBookRepository(), requests: [_request('br-3', 'b12', 'Atomic Habits', BorrowRequestStatus.pending)]),
+      );
+
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Your fine stands'), findsOneWidget);
+      expect(find.text('The library kept your ₹30 fine for Sapiens.'), findsOneWidget);
+      expect(find.text('${yesterday.day} ${_months[yesterday.month - 1]} ${yesterday.year}'), findsOneWidget);
+      expect(find.text('Overdue book reminder'), findsOneWidget);
+      expect(find.text('Your copy of Operating System Concepts is 3 days overdue.'), findsOneWidget);
+      expect(find.text('${threeDaysAgo.day} ${_months[threeDaysAgo.month - 1]} ${threeDaysAgo.year}'), findsOneWidget);
+      // The title is the bold line.
+      expect(tester.widget<Text>(find.text('Your fine stands')).style?.fontWeight, FontWeight.bold);
+
+      // Above the requests, and so above everything else on the screen.
+      expect(find.text('Requests'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Library notices')).dy, lessThan(tester.getTopLeft(find.text('Requests')).dy));
+      expect(tester.getTopLeft(find.text('Library notices')).dy, lessThan(tester.getTopLeft(find.text('On loan')).dy));
+    });
+
+    testWidgets('an escalation uses the accent style', (tester) async {
+      await _pumpLoans(tester, notices: MockNoticeRepository(notices: [
+        _notice('n1', kind: NoticeKind.overdueEscalation, title: 'Formal overdue notice', body: 'Operating System Concepts is now 5 days overdue.'),
+        _notice('n2'),
+      ]));
+
+      expect(titleColour(tester, 'Formal overdue notice'), accent(tester));
+      // A reminder is drawn in the default colour.
+      expect(titleColour(tester, 'Overdue book reminder'), isNot(accent(tester)));
+    });
+
+    testWidgets('a notice of a kind this version does not know still shows its title and body', (tester) async {
+      await _pumpLoans(tester, notices: MockNoticeRepository(notices: [
+        _notice('n1', kind: NoticeKind.unknown, title: 'A new sort of notice', body: 'Something the library wants you to read.'),
+      ]));
+
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('A new sort of notice'), findsOneWidget);
+      expect(find.text('Something the library wants you to read.'), findsOneWidget);
+      expect(titleColour(tester, 'A new sort of notice'), isNot(accent(tester)));
+    });
+
+    testWidgets('hidden when there are none and while loading', (tester) async {
+      await _pumpLoans(tester);
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('On loan'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      final notices = _GatedNotices()
+        ..served = [_notice('n1')]
+        ..gate = Completer<void>();
+      await _pumpLoans(tester, notices: notices);
+      // The loans are on screen; the notices are still on their way.
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Overdue book reminder'), findsNothing);
+
+      notices.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Overdue book reminder'), findsOneWidget);
+    });
+
+    testWidgets('a list that cannot be loaded shows nothing, not even an error, and leaves the loans alone', (tester) async {
+      final notices = _GatedNotices()..failing = true;
+      await _pumpLoans(tester, notices: notices);
+
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.textContaining("Couldn't load"), findsNothing);
+      expect(find.text('Retry'), findsNothing);
+      expect(find.text('The library server had a problem.'), findsNothing);
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Renew'), findsWidgets);
+      expect(find.text('Fine: ₹30.0 and counting'), findsOneWidget);
+      expect(find.text("Couldn't load your loans"), findsNothing);
+    });
+
+    testWidgets('a student with only notices sees them, not the empty state', (tester) async {
+      await _pumpLoans(tester, loans: _NoLoans(), notices: MockNoticeRepository(notices: [
+        _notice('n1', kind: NoticeKind.reportOutcome, title: 'Thanks for the report', body: 'Thanks for reporting a problem with Sapiens.'),
+      ]));
+
+      expect(find.text('No active loans'), findsNothing);
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Thanks for the report'), findsOneWidget);
+    });
+
+    testWidgets('the empty state waits for the notices to arrive, and shows when they fail', (tester) async {
+      final notices = _GatedNotices()
+        ..served = [_notice('n1', title: 'Your fine was waived', kind: NoticeKind.disputeOutcome)]
+        ..gate = Completer<void>();
+      await _pumpLoans(tester, loans: _NoLoans(), notices: notices);
+      expect(find.text('No active loans'), findsNothing);
+
+      notices.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Your fine was waived'), findsOneWidget);
+      expect(find.text('No active loans'), findsNothing);
+
+      // Secondary: a list that cannot be loaded does not hide the empty state for good.
+      await tester.pumpWidget(const SizedBox());
+      await _pumpLoans(tester, loans: _NoLoans(), notices: _GatedNotices()..failing = true);
+      expect(find.text('No active loans'), findsOneWidget);
+    });
+  });
+
   group('a late loan returned or renewed from My Loans', () {
     // The loan3 row is the overdue one, third in the list.
     Finder overdueLoan(Type button, String label) => find.widgetWithText(button, label).at(2);
@@ -696,6 +1258,7 @@ void main() {
       WidgetTester tester, {
       LoanRepository? loans,
       MockFineRepository? fines,
+      MockNoticeRepository? notices,
       MockWaitlistRepository? waitlist,
       MockBorrowRequestRepository? borrowRequests,
       // Riverpod retries a failed fetch for about 40 seconds, showing it as a
@@ -708,7 +1271,7 @@ void main() {
       final container = ProviderContainer(
         retry: retries ? null : (_, __) => null,
         overrides: mockRepositoryOverrides(
-          auth: _InstantAuth(), loans: loans, fines: fines, waitlist: waitlist, borrowRequests: borrowRequests,
+          auth: _InstantAuth(), loans: loans, fines: fines, notices: notices, waitlist: waitlist, borrowRequests: borrowRequests,
         ),
       );
       addTearDown(container.dispose);
@@ -826,6 +1389,62 @@ void main() {
       expect(find.textContaining('Outstanding'), findsNothing);
     });
 
+    testWidgets("a different student never sees the previous student's notices while theirs load", (tester) async {
+      final notices = _GatedNotices()..served = [_notice('a1', title: 'Formal overdue notice', kind: NoticeKind.overdueEscalation, body: 'Algorithms Unlocked is now 5 days overdue.')];
+      final container = await openAsFirstStudent(tester, notices: notices);
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+      expect(find.text('Algorithms Unlocked is now 5 days overdue.'), findsOneWidget);
+
+      notices.served = [_notice('b1', title: 'Your fine was waived', kind: NoticeKind.disputeOutcome, body: 'The library waived the ₹30 fine for Sapiens.')];
+      notices.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      // The loans have arrived, so this is the window where the notices have not.
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Formal overdue notice'), findsNothing);
+      expect(find.text('Algorithms Unlocked is now 5 days overdue.'), findsNothing);
+
+      notices.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Your fine was waived'), findsOneWidget);
+      expect(find.text('Formal overdue notice'), findsNothing);
+    });
+
+    testWidgets("shows no notices, not the last student's, when the next student's fetch fails", (tester) async {
+      // Riverpod keeps the last student's value beside the error, too.
+      final notices = _GatedNotices()..served = [_notice('a1', title: 'Formal overdue notice', kind: NoticeKind.overdueEscalation)];
+      final container = await openAsFirstStudent(tester, notices: notices, retries: false);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+
+      notices.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Formal overdue notice'), findsNothing);
+      expect(find.textContaining("Couldn't load"), findsNothing);
+    });
+
+    testWidgets("does not show the last student's notices while the next student's fetch is being retried", (tester) async {
+      final notices = _GatedNotices()..served = [_notice('a1', title: 'Formal overdue notice', kind: NoticeKind.overdueEscalation)];
+      final container = await openAsFirstStudent(tester, notices: notices);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+
+      notices.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Formal overdue notice'), findsNothing);
+
+      // Once the retries run out the error is final, and still not their value.
+      await tester.pump(const Duration(minutes: 1));
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Formal overdue notice'), findsNothing);
+    });
+
     testWidgets("does not show the last student's waitlist or requests when the next student's fetches fail", (tester) async {
       final waitlist = _GatedWaitlist()
         ..served = [const Reservation(id: 'res-b2', bookId: 'b2', status: ReservationStatus.waiting, queuePosition: 3)];
@@ -865,6 +1484,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Sapiens'), findsOneWidget);
       expect(find.text('No active loans'), findsNothing);
+    });
+
+    testWidgets("a different student never sees the previous student's dispute state", (tester) async {
+      final fines = _GatedFines()
+        ..served = [
+          _fine('a1', item: 'Algorithms Unlocked', dispute: const FineDispute(status: DisputeStatus.open)),
+          _fine('a2', item: 'Compilers', dispute: const FineDispute(status: DisputeStatus.upheld, note: 'The scan log shows it came back late.')),
+          _fine('a3', item: 'Databases'),
+        ];
+      final container = await openAsFirstStudent(tester, fines: fines);
+      expect(find.text('Under review'), findsOneWidget);
+      expect(find.text('The library kept this fine.'), findsOneWidget);
+      expect(find.text('The scan log shows it came back late.'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Dispute'), findsOneWidget);
+
+      fines.served = [_fine('b1', item: 'Sapiens', amount: 20)];
+      fines.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      // Their fines are on the way: nothing of the last student's disputes shows, and
+      // neither does a button that would act on the last student's fine.
+      expect(find.text('Fines'), findsOneWidget);
+      expect(find.text('Under review'), findsNothing);
+      expect(find.text('The library kept this fine.'), findsNothing);
+      expect(find.text('The scan log shows it came back late.'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Dispute'), findsNothing);
+      expect(find.byType(LoadingSkeleton), findsOneWidget);
+
+      fines.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Sapiens'), findsOneWidget);
+      expect(find.text('Under review'), findsNothing);
+      expect(find.text('The library kept this fine.'), findsNothing);
+      // Their own fine has no dispute, so it offers one.
+      expect(find.widgetWithText(TextButton, 'Dispute'), findsOneWidget);
+    });
+
+    testWidgets("shows no dispute state, not the last student's, when the next student's fetch fails", (tester) async {
+      final fines = _GatedFines()
+        ..served = [_fine('a1', item: 'Algorithms Unlocked', dispute: const FineDispute(status: DisputeStatus.open))];
+      final container = await openAsFirstStudent(tester, fines: fines, retries: false);
+      expect(find.text('Under review'), findsOneWidget);
+
+      fines.failing = true;
+      await openAsNextStudent(tester, container);
+
+      expect(find.text("Couldn't load your fines."), findsOneWidget);
+      expect(find.text('Under review'), findsNothing);
+      expect(find.text('Algorithms Unlocked'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Dispute'), findsNothing);
     });
 
     testWidgets("does not show the last student's waitlist while the next student's loads", (tester) async {
@@ -990,6 +1659,49 @@ void main() {
       expect(loans.fetches, 2);
       expect(fines.fetches, 1);
       expect(find.text('Operating System Concepts'), findsOneWidget);
+    });
+
+    testWidgets('opening My Loans refetches the notices once', (tester) async {
+      // Loaded earlier, so it can predate a reminder or an outcome the library wrote
+      // while the student was elsewhere.
+      final notices = _CountingNotices(notices: [_notice('n1')]);
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(notices: notices));
+      addTearDown(container.dispose);
+      await container.read(noticesControllerProvider.future);
+      expect(notices.fetches, 1);
+
+      notices.notices = [_notice('n2', kind: NoticeKind.overdueEscalation, title: 'Formal overdue notice'), _notice('n1')];
+      await open(tester, container);
+
+      expect(notices.fetches, 2);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+
+      // Each visit builds a new screen, so the next one asks again.
+      await tester.pumpWidget(const SizedBox());
+      await open(tester, container);
+      expect(notices.fetches, 3);
+    });
+
+    testWidgets('a failed quiet refresh of the notices on open keeps them on screen', (tester) async {
+      final notices = _CountingNotices(notices: [_notice('n1')]);
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(notices: notices));
+      addTearDown(container.dispose);
+      await container.read(noticesControllerProvider.future);
+
+      notices.offline = true;
+      await open(tester, container);
+
+      expect(notices.fetches, 2); // it did ask, and the ask failed
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Overdue book reminder'), findsOneWidget);
+    });
+
+    testWidgets('opening it before the notices have loaded does not fetch a second time', (tester) async {
+      final notices = _CountingNotices(notices: [_notice('n1')]);
+      await _pumpLoans(tester, notices: notices);
+
+      expect(find.text('Overdue book reminder'), findsOneWidget);
+      expect(notices.fetches, 1); // the load is the fresh fetch
     });
 
     testWidgets('opening it while a request is pending still fetches the loans only once', (tester) async {

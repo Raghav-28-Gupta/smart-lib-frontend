@@ -17,6 +17,8 @@ import '../borrow_requests/borrow_requests_controller.dart';
 import '../catalog/catalog_providers.dart';
 import '../fines/fines_controller.dart';
 import '../fines/fines_section.dart';
+import '../notices/notices_controller.dart';
+import '../notices/notices_section.dart';
 import '../waitlist/waitlist_controller.dart';
 import 'loans_controller.dart';
 
@@ -37,19 +39,19 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(uiControllerProvider.notifier).onConfirmReturnLoan =
-          (id) => ref.read(loansControllerProvider.notifier).returnLoan(id);
+          (id, report) => ref.read(loansControllerProvider.notifier).returnLoan(id, report: report);
       _refreshOnOpen();
     });
   }
 
   /// The lists were loaded when the student first needed them (the loans usually
-  /// on Home), so they can predate a payment, a waive or adjustment of a fine, or
-  /// a loan a librarian marked lost. Each time this screen opens it asks the
-  /// server once for each, quietly: a failure keeps what is on screen. A list
-  /// still loading is itself that fresh fetch, so only that one is skipped (the
-  /// fines are first loaded by this screen, while the loans were usually loaded
-  /// long before). Each visit to the tab builds a new screen (the tabs are a plain
-  /// ShellRoute), so this runs on every visit.
+  /// on Home), so they can predate a payment, a waive or adjustment of a fine, a
+  /// loan a librarian marked lost, or a notice the library wrote. Each time this
+  /// screen opens it asks the server once for each, quietly: a failure keeps what
+  /// is on screen. A list still loading is itself that fresh fetch, so only that
+  /// one is skipped (the fines and notices are first loaded by this screen, while
+  /// the loans were usually loaded long before). Each visit to the tab builds a
+  /// new screen (the tabs are a plain ShellRoute), so this runs on every visit.
   void _refreshOnOpen() {
     if (!mounted) return;
     if (!ref.read(loansControllerProvider).isLoading) {
@@ -57,6 +59,9 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     }
     if (!ref.read(finesControllerProvider).isLoading) {
       ref.read(finesControllerProvider.notifier).refreshQuietly();
+    }
+    if (!ref.read(noticesControllerProvider).isLoading) {
+      ref.read(noticesControllerProvider.notifier).refreshQuietly();
     }
   }
 
@@ -96,6 +101,14 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     // Known to be empty, not merely not loaded yet: a student with fines but
     // nothing else must not see the empty state flash first.
     final noFines = own(ref.watch(finesControllerProvider))?.fines.isEmpty ?? false;
+    // A student whose only news is a notice (the outcome of a report on a book they
+    // returned) must see it, not the empty state, so that waits for the notices too.
+    // They are secondary, though: a list that could not be loaded does not keep the
+    // empty state away. The error shows at once, retries included; a loading state
+    // still holding the last student's error is not theirs (as for the fines below).
+    final noticesState = ref.watch(noticesControllerProvider);
+    final noticesFailed = noticesState.hasError && (!noticesState.isLoading || noticesState.retrying);
+    final noNotices = noticesFailed || (own(noticesState)?.isEmpty ?? false);
     return PendingRefresh(
       active: requests.anyPending,
       onTick: _recheck,
@@ -107,7 +120,7 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
           ]),
           error: (e, st) => ErrorState(title: "Couldn't load your loans", onRetry: () => ref.invalidate(loansControllerProvider)),
           data: (items) {
-            if (items.isEmpty && waitlist.isEmpty && requests.isEmpty && noFines) {
+            if (items.isEmpty && waitlist.isEmpty && requests.isEmpty && noFines && noNotices) {
               return EmptyState(
                 icon: Icons.menu_book, title: 'No active loans',
                 body: 'Search the catalog to borrow your first book.',
@@ -119,6 +132,8 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // Hides itself when there are none, while they load and when they fail.
+                const NoticesSection(),
                 if (requests.isNotEmpty) ...[
                   Text('Requests', style: heading),
                   const SizedBox(height: 6),
@@ -218,8 +233,13 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
             child: const Text('Renew'),
           )),
           const SizedBox(width: 8),
+          // Off while this loan's return is on the wire (the dialog closed at once, so
+          // nothing else shows it): a second return would be refused and its toast
+          // would replace "Returned. Thanks for the report."
           Expanded(child: TextButton(
-            onPressed: () => ref.read(uiControllerProvider.notifier).askReturnLoan(l.id),
+            onPressed: ref.read(loansControllerProvider.notifier).isReturning(l.id)
+                ? null
+                : () => ref.read(uiControllerProvider.notifier).askReturnLoan(l.id),
             child: const Text('Return'),
           )),
         ]),

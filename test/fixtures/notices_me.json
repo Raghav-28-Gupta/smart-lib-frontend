@@ -1,0 +1,16 @@
+[
+  {
+    "id": "db09a0c2-c30e-4169-9a16-4eeda13ba1cf",
+    "kind": "dispute_outcome",
+    "title": "Your fine was reduced",
+    "body": "The library reduced your fine for Computer Networks to ₹20 (it was ₹30).\n\nNote from the library: Returned during exam week",
+    "createdAt": "2026-11-22T17:49:39.667Z"
+  },
+  {
+    "id": "a41d1f67-88e2-4713-8711-837fe8dce9ab",
+    "kind": "overdue_reminder",
+    "title": "Overdue book reminder",
+    "body": "Your copy of Computer Networks was due on 19 Nov 2026 and is 3 days overdue. The fine is ₹30 so far and grows by ₹10 a day. Please return it to the library.",
+    "createdAt": "2026-11-22T17:49:35.206Z"
+  }
+]

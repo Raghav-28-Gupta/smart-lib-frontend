@@ -84,4 +84,79 @@ void main() {
     expect(stub.requests.single.method, 'POST');
     expect(stub.requests.single.path, '/bookings/bk-1/cancel');
   });
+
+  group('POST /reports', () {
+    test('POST /reports sends the resource, category and note', () async {
+      final (bookings, stub) = repo((_) => const StubResponse(201, {'id': 'rep-1'}));
+      await bookings.reportResource('s3', ResourceReportCategory.notWorking, 'The desk lamp does not switch on.');
+
+      final request = stub.requests.single;
+      expect(request.method, 'POST');
+      expect(request.path, '/reports');
+      expect(request.data, {
+        'resourceId': 's3',
+        'category': 'not_working',
+        'note': 'The desk lamp does not switch on.',
+      });
+    });
+
+    test('a report with no note sends no note key, not null and not an empty string', () async {
+      final (bookings, stub) = repo((_) => const StubResponse(201, {'id': 'rep-1'}));
+      await bookings.reportResource('r1', ResourceReportCategory.dirty, null);
+
+      expect(stub.requests.single.data, {'resourceId': 'r1', 'category': 'dirty'});
+      expect((stub.requests.single.data as Map).containsKey('note'), false);
+    });
+
+    test('each category goes out in the server\'s spelling', () async {
+      final sent = <Object?>[];
+      final (bookings, _) = repo((options) {
+        sent.add((options.data as Map)['category']);
+        return const StubResponse(201, {'id': 'rep-1'});
+      });
+      for (final category in ResourceReportCategory.values) {
+        await bookings.reportResource('s3', category, category == ResourceReportCategory.other ? 'Something else.' : null);
+      }
+      expect(sent, ['not_working', 'dirty', 'other']);
+    });
+
+    test('a resource id is sent as given, whatever it holds', () async {
+      final (bookings, stub) = repo((_) => const StubResponse(201, {'id': 'rep-1'}));
+      await bookings.reportResource('a/b c', ResourceReportCategory.dirty, null);
+      expect((stub.requests.single.data as Map)['resourceId'], 'a/b c');
+      expect(stub.requests.single.path, '/reports');
+    });
+
+    test('a second report answers 409 with the server\'s message', () async {
+      final (bookings, _) = repo((_) => const StubResponse(409, {'error': 'You already reported this. The library is looking into it.'}));
+      await expectLater(
+        bookings.reportResource('s3', ResourceReportCategory.dirty, null),
+        throwsA(isA<ConflictException>().having((e) => e.message, 'message', 'You already reported this. The library is looking into it.')),
+      );
+    });
+
+    test('a seat the student never booked answers 403 with the server\'s message', () async {
+      final (bookings, _) = repo((_) => const StubResponse(403, {'error': 'You can only report a seat or room you have booked.'}));
+      await expectLater(
+        bookings.reportResource('s3', ResourceReportCategory.dirty, null),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 403)
+            .having((e) => e.message, 'message', 'You can only report a seat or room you have booked.')),
+      );
+    });
+
+    test('a network failure is an ApiException with status 0', () async {
+      final (bookings, _) = repo((options) => throw DioException.connectionError(requestOptions: options, reason: 'offline'));
+      await expectLater(
+        bookings.reportResource('s3', ResourceReportCategory.dirty, null),
+        throwsA(isA<ApiException>().having((e) => e.isNetworkError, 'isNetworkError', true)),
+      );
+    });
+
+    test('GET /bookings/me carries canReport and reportOpen, as captured', () async {
+      final (bookings, _) = repo((_) => StubResponse(200, fixture('bookings_me_reported')));
+      final listed = await bookings.myBookings();
+      expect(listed.where((b) => b.resourceId == 's3' && b.reportOpen && !b.canReport), isNotEmpty);
+    });
+  });
 }

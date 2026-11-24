@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_exception.dart';
 import '../../models/loan.dart';
+import '../../models/return_report.dart';
 import '../auth/auth_controller.dart';
 import '../fines/fines_controller.dart';
 import 'loan_repository.dart';
@@ -11,6 +12,12 @@ class LoansController extends AsyncNotifier<List<Loan>> {
   // Loans with a renewal in flight. A second tap would renew twice and use up
   // the renewal limit for nothing.
   final _renewing = <String>{};
+
+  // Loans with a return in flight. A second return would be refused ("already
+  // returned"), and that refusal's toast would replace the first one's "Returned." or
+  // "Returned. Thanks for the report." The card's Return is off meanwhile
+  // ([isReturning]), so this is the guard behind it.
+  final _returning = <String>{};
 
   // Bumped by every build(). This notifier outlives a rebuild (a different student
   // logging in), so a quiet refresh begun for the last student must neither land in
@@ -45,16 +52,34 @@ class LoansController extends AsyncNotifier<List<Loan>> {
     }
   }
 
-  Future<void> returnLoan(String loanId) async {
+  /// Whether a return of [loanId] is on the wire: the loan card's Return is off then.
+  /// Listeners are told when it starts and when it ends (`ref.notifyListeners`), as
+  /// this is state beside the list that the card has to redraw for.
+  bool isReturning(String loanId) => _returning.contains(loanId);
+
+  /// Returns the loan, with the student's [report] of a problem with the copy when
+  /// they made one. The report is part of the same request, so a refusal (the loan
+  /// was closed elsewhere) means neither the return nor the report was saved. A return
+  /// of a loan whose return is already on the wire sends nothing.
+  Future<void> returnLoan(String loanId, {ReturnReport? report}) async {
+    if (!_returning.add(loanId)) return;
+    _returningChanged();
     try {
-      await ref.read(loanRepositoryProvider).returnLoan(loanId);
+      await ref.read(loanRepositoryProvider).returnLoan(loanId, report: report);
+      final current = state.value ?? [];
+      state = AsyncValue.data(current.where((l) => l.id != loanId).toList());
+      _refreshFines();
     } on ApiException catch (e) {
       _refetchIfStale(e);
       rethrow;
+    } finally {
+      _returning.remove(loanId);
+      _returningChanged();
     }
-    final current = state.value ?? [];
-    state = AsyncValue.data(current.where((l) => l.id != loanId).toList());
-    _refreshFines();
+  }
+
+  void _returningChanged() {
+    if (ref.mounted) ref.notifyListeners();
   }
 
   /// Returning or renewing a late loan makes the server write the overdue fine,

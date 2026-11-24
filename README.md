@@ -1,8 +1,9 @@
 # SmartLib — Frontend (Flutter + Riverpod)
 
 The SmartLib student app: catalog search, borrowing and the waitlist, loans and
-renewals, seat and room booking with check-in, reliability, and recommendations.
-One codebase for **web, Android, and Windows**.
+renewals, fines (and disputing them), library notices, seat and room booking with
+check-in, problem reports, reliability, and recommendations. One codebase for
+**web, Android, and Windows**.
 
 The app talks to exactly one server, the Node backend on port 3000. It has no
 offline mode and no demo data of its own: without the backend running, every
@@ -137,8 +138,12 @@ SMARTLIB_ADMIN_EMAIL=you@thapar.edu SMARTLIB_ADMIN_PASSWORD_FILE=/path/to/passwo
 cd ../backend && npm run seed                   # restore the demo data
 ```
 
-The capture has an admin approve and decline requests and cancel and move a
-booking, so it needs an admin account (`cd ../backend && npm run create-admin`). Its password is read from a
+The capture has an admin approve and decline requests, cancel and move a
+booking, remind the demo student's overdue loan (the library notice saved as
+`notices_me`) and answer the student's dispute of the fine that loan's return
+wrote (saved as `fines_me_disputed`, `fines_me_adjusted`), and has the student
+report the seat they checked into (saved as `bookings_me_reported`, where every
+booking on that seat reads `reportOpen`), so it needs an admin account (`cd ../backend && npm run create-admin`). Its password is read from a
 file so it never lands in your shell history. In PowerShell, set the two
 variables first:
 
@@ -147,6 +152,12 @@ $env:SMARTLIB_ADMIN_EMAIL = 'you@thapar.edu'
 $env:SMARTLIB_ADMIN_PASSWORD_FILE = 'C:\path\to\password.txt'
 dart run tool/capture_fixtures.dart
 ```
+
+A key the backend adds to a response (a fine's `dispute`, a booking's `canReport`
+and `reportOpen`) is additive: an older app ignores it, and the models read it as
+optional or with a default, so an older server's response still parses (the
+booking's `resourceId`, which the backend already sent, is likewise read with a
+default, `''`).
 
 **Code generation.** Models use `json_serializable`. After changing a model,
 regenerate and commit the `*.g.dart` output:
@@ -236,14 +247,14 @@ when you're done, because the steps change the demo data.
 | 7 | In the admin console, **Approve** that request; keep the book open | Within 30 seconds: *Borrowed — see My Loans…*, and the loan is in My Loans | ☐ | ☐ | ☐ |
 | 8 | **Request to borrow** another book; in the console, **Decline** it with a reason | Within 30 seconds: *Your request was declined: …* and **Request again** | ☐ | ☐ | ☐ |
 | 9 | **Renew** a renewable loan | *Renewed — now due …* | ☐ | ☐ | ☐ |
-| 10 | **Return** a loan → confirm | Toast *Returned.*; the loan leaves the list | ☐ | ☐ | ☐ |
+| 10 | **Return** a loan → confirm. Then return another, this time ticking **Report a problem with this copy** and choosing *Damaged* | Toast *Returned.*; the loan leaves the list. The second reads *Returned. Thanks for the report.* (choosing *Other* keeps **Return** off until you write a note) | ☐ | ☐ | ☐ |
 | 11 | Open *Operating System Concepts* (no copies free) → **Join Waitlist**; go back, then open it again | *You're #3 in line.* is still there; My Loans lists it under **Waitlist** | ☐ | ☐ | ☐ |
 | 12 | On that book, **Leave waitlist** | Toast *You've left the waitlist.*; *Join Waitlist* is back | ☐ | ☐ | ☐ |
 | 13 | **Held copy**: on another client, log in as `seed.student1@thapar.edu` (same password), request *The Midnight Library*, and approve it in the console. As Aditi, join its waitlist. Then return it as the other student | Aditi's My Loans shows *Held for you until …* and the book offers **Request to borrow**; the other student sees *Every copy on the shelf is held for a student on the waitlist.* | ☐ | ☐ | ☐ |
 | 14 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
 | 15 | Bookings → New → Rooms → Tomorrow → pick a slot → Continue → **Send request**; then approve it in the console | *Request sent*; My Bookings shows *Waiting for a librarian · held until …*, then within 30 seconds *check-in opens at the start time* | ☐ | ☐ | ☐ |
 | 16 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
-| 17 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In** | *Enjoy your session.* | ☐ | ☐ | ☐ |
+| 17 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In**. Then tap **Report a problem** on that card, choose *Other* (**Send** stays off until you write a note), write one, and send | *Enjoy your session.* After sending, the toast reads *Thanks, the library has your report.* and the card shows *Reported* in place of the button | ☐ | ☐ | ☐ |
 | 18 | **Cancel** a booking → confirm | Toast *Booking canceled.*; it leaves the list | ☐ | ☐ | ☐ |
 | 19 | Profile | Reliability ring at 50, *Building back up*; **How reliability works** opens a dialog | ☐ | ☐ | ☐ |
 | 20 | Home → Recommended for You → See all | A list of books | ☐ | ☐ | ☐ |
@@ -290,7 +301,7 @@ lib/
 │   ├── theme/                 # tokens + ThemeData
 │   └── ui/                    # confirm dialogs, toasts, UiController.attempt()
 ├── models/                    # json_serializable models (+ committed *.g.dart)
-├── widgets/                   # shared widgets (covers, skeletons, empty/error states)
+├── widgets/                   # shared widgets (covers, skeletons, empty/error states, the note field)
 └── features/
     ├── auth/                  # login/register, session restore, splash
     ├── catalog/               # search, book detail, borrow requests
@@ -298,6 +309,7 @@ lib/
     ├── waitlist/              # join/leave, place in line, copies held for you
     ├── loans/                 # active loans, renew, return
     ├── fines/                 # the student's fines (the Fines section of My Loans)
+    ├── notices/               # library notices (the Library notices section of My Loans)
     ├── bookings/              # booking flow, conflicts, check-in, time slots
     ├── profile/               # reliability
     ├── recommendations/
@@ -316,7 +328,8 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
 
 - **No notifications.** When a copy comes back for you, it's held for 48 hours.
   The app shows the hold in My Loans and on the book, but nothing tells you
-  while the app is closed. The backend has no notification channel yet.
+  while the app is closed. The backend emails only the library's own notices
+  (below), not holds.
 - **A librarian's answer to a request arrives by re-check.** While a request is
   pending and its screen is open, the app asks the server every 30 seconds;
   nothing tells you while the app is closed. Push notifications are planned.
@@ -331,13 +344,59 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
   There are no push notifications yet.
 - **Fines, and changes to them, show when you open My Loans.** The Fines section
   lists your fines (outstanding, adjusted, paid or waived, with the librarian's
-  note when one lowered or waived it). When a librarian records a payment, waives
+  note when one lowered or waived it). A fine that is still owed has a **Dispute**
+  button: it asks why you think the fine is wrong (at most 300 characters, counted
+  as the library counts them: an emoji or a Hindi vowel sign can count as two, so
+  the field shows its own count, *n/300*, and says *At most 300 characters* with
+  **Send** off when you are over; what you typed is never cut) and
+  sends it, once per fine. The card then reads *Under review* in place of the
+  button, and the button never returns; while it is open the library cannot
+  record a payment for that fine. If the library refuses the dispute (the fine was
+  paid or waived meanwhile, or you already disputed it from another device), the
+  dialog stays and a toast gives its reason. The library's answer arrives as a
+  library notice, and on the card: a waived or lowered fine shows its new status
+  and the librarian's note, and an upheld one reads *The library kept this fine.*
+  with their note. When a librarian records a payment, answers a dispute, waives
   or lowers a fine, or marks a copy you borrowed as lost (the loan leaves the
-  list), My Loans shows it the next time you open it: each time its tab is selected, the screen does one quiet re-check
-  of the loans and the fines (a failed re-check keeps what you had). While you
-  stay on another screen, or on My Loans itself, nothing updates, except that
-  returning or renewing a late book shows its fine at once. There are no push
+  list), My Loans shows it the next time you open it: each time its tab is
+  selected, the screen does one quiet re-check of the loans, the fines and the
+  library notices (a failed re-check keeps what you had). While you stay on
+  another screen, or on My Loans itself, nothing updates, except that returning
+  or renewing a late book shows its fine at once. There are no push
   notifications yet.
+- **A problem with a book is reported when you return it.** The **Return** dialog
+  has an optional **Report a problem with this copy** box: ticking it asks what is
+  wrong (*Damaged*, *Missing pages* or *Other*) and for a note of at most 300
+  characters (counted as for a dispute), which *Other* requires, and **Return**
+  stays off until that is filled in. The report is sent in the same request as the
+  return, so you never return a book and lose the report, or the reverse; if the
+  return is refused, nothing is reported. While a return is being sent, that loan's
+  **Return** button on its card is off, so a second tap cannot be refused as "already
+  returned" over the first one's thanks. There is no other way to report a copy, and
+  the library's answer arrives as a library notice (below).
+- **A problem with a seat or room is reported from My Bookings.** A booking the
+  library says you can report (one that started within the last 7 days or starts
+  within the next 24, whether or not you checked in; not a cancelled one or a room
+  request still waiting) shows a **Report a problem** button. It asks what is wrong
+  (*Not working*, *Dirty* or *Other*) and for a note of at most 300 characters (counted
+  as for a dispute), which *Other* requires, and **Send** stays off until that is filled in. After sending, every
+  booking of yours on that seat or room reads *Reported* in place of the button until
+  the library has dealt with it; you cannot report the same seat twice meanwhile (a
+  second attempt, say from another device, is refused with the library's own message
+  and the card catches up). The library's answer arrives as a library notice (below),
+  after which the button comes back for a booking that is still within the window.
+- **Library notices show when you open My Loans.** A **Library notices** section
+  at the top of My Loans lists the library's messages to you from the last 7 days
+  (at most 20, newest first): a librarian's overdue reminder or formal notice, or
+  the outcome of a dispute or a report. Each shows its title, text and date, and a formal
+  overdue notice is drawn in the accent colour. The section is absent when there
+  are none, while they load and when they can't be loaded (no error is shown; the
+  next time you open My Loans asks again). Like the loans and the fines, they are
+  re-checked quietly each time the tab is selected (a failed re-check keeps what
+  you had), and nothing arrives while you stay on another screen. A kind of notice
+  this version doesn't know still shows its title and text. The text is also
+  emailed when the library has set up email (never to the demo accounts'
+  placeholder addresses); there is no push notification and no "mark as read".
 - **Search sends a request on every keystroke**, with no debounce.
 - **The app is student-only.** It receives the user's `role`, but librarian
   tools are planned as a separate web console.

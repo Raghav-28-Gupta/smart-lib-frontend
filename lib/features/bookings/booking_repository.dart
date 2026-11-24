@@ -38,6 +38,13 @@ abstract class BookingRepository {
   Future<List<ResourceBooking>> myBookings();
   Future<ResourceBooking> checkIn(String bookingId);
   Future<void> cancelBooking(String bookingId);
+
+  /// Tells the library what is wrong with a seat or room the student booked
+  /// (`POST /reports`). [note] is already trimmed and at most 300 characters (the
+  /// server counts UTF-16 code units), or null for none; `other` needs one. Refused
+  /// with a 403 for a resource the student has no qualifying booking on, and a 409
+  /// when they already have an open report on it.
+  Future<void> reportResource(String resourceId, ResourceReportCategory category, String? note);
 }
 
 class HttpBookingRepository implements BookingRepository {
@@ -89,6 +96,16 @@ class HttpBookingRepository implements BookingRepository {
   Future<void> cancelBooking(String bookingId) async {
     await guardApi(() => _dio.post<Object?>('/bookings/${Uri.encodeComponent(bookingId)}/cancel'));
   }
+
+  @override
+  Future<void> reportResource(String resourceId, ResourceReportCategory category, String? note) async {
+    // No `note` key without a note: the server reads a missing key as none.
+    await guardApi(() => _dio.post<Object?>('/reports', data: {
+          'resourceId': resourceId,
+          'category': category.wireName,
+          if (note != null) 'note': note,
+        }));
+  }
 }
 
 class MockBookingRepository implements BookingRepository {
@@ -99,13 +116,18 @@ class MockBookingRepository implements BookingRepository {
     // its start time -- the bookings controller recomputes grace from it.
     final inWindowStart = now.subtract(const Duration(seconds: 313));
     _bookings = [
-      ResourceBooking(id: 'bk1', resourceName: 'Reading Room A · Desk 4', type: ResourceType.seat, startTime: farStart, endTime: farStart.add(const Duration(hours: 2)), status: BookingStatus.upcomingFar),
-      ResourceBooking(id: 'bk2', resourceName: 'Group Room 201', type: ResourceType.room, startTime: inWindowStart, endTime: inWindowStart.add(const Duration(hours: 1)), status: BookingStatus.inWindow, graceRemainingSeconds: 587),
+      // Both start within the report window (the next 24 hours, the last 7 days), so
+      // the server would mark each `canReport`.
+      ResourceBooking(id: 'bk1', resourceId: 's1', resourceName: 'Reading Room A · Desk 4', type: ResourceType.seat, startTime: farStart, endTime: farStart.add(const Duration(hours: 2)), status: BookingStatus.upcomingFar, canReport: true),
+      ResourceBooking(id: 'bk2', resourceId: 'r1', resourceName: 'Group Room 201', type: ResourceType.room, startTime: inWindowStart, endTime: inWindowStart.add(const Duration(hours: 1)), status: BookingStatus.inWindow, graceRemainingSeconds: 587, canReport: true),
     ];
   }
 
   late List<ResourceBooking> _bookings;
   final Set<String> _extraTaken = {};
+
+  /// Every report that was accepted, in order.
+  final reports = <({String resourceId, ResourceReportCategory category, String? note})>[];
 
   String _key(String resourceId, int dateIndex, String slot) => '$resourceId|$dateIndex|$slot';
 
@@ -142,7 +164,7 @@ class MockBookingRepository implements BookingRepository {
     // Rooms wait for a librarian, as on the server; seats are booked at once.
     final isRoom = resource.type == ResourceType.room;
     final booking = ResourceBooking(
-      id: 'bk-${DateTime.now().microsecondsSinceEpoch}', resourceName: resource.name, type: resource.type,
+      id: 'bk-${DateTime.now().microsecondsSinceEpoch}', resourceId: resource.id, resourceName: resource.name, type: resource.type,
       startTime: start, endTime: end,
       status: isRoom ? BookingStatus.requested : BookingStatus.upcomingFar,
       expiresAt: isRoom ? start.add(kCheckInGracePeriod) : null,
@@ -165,6 +187,18 @@ class MockBookingRepository implements BookingRepository {
   @override
   Future<void> cancelBooking(String bookingId) async {
     _bookings.removeWhere((b) => b.id == bookingId);
+  }
+
+  // Refuses as the server does: a second report is a 409, and a resource with no
+  // booking that qualifies (`canReport`) is a 403. Otherwise every booking on that
+  // resource reads reported.
+  @override
+  Future<void> reportResource(String resourceId, ResourceReportCategory category, String? note) async {
+    final onIt = _bookings.where((b) => b.resourceId == resourceId);
+    if (onIt.any((b) => b.reportOpen)) throw const ConflictException('You already reported this. The library is looking into it.');
+    if (!onIt.any((b) => b.canReport)) throw const ApiException(403, 'You can only report a seat or room you have booked.');
+    reports.add((resourceId: resourceId, category: category, note: note));
+    _bookings = [for (final b in _bookings) b.resourceId == resourceId ? b.copyWith(reportOpen: true, canReport: false) : b];
   }
 }
 

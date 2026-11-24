@@ -6,9 +6,11 @@
 // changes.
 //
 // It MUTATES the dev database -- creates bookings and requests, checks in,
-// renews a loan, returns an overdue one, and has an admin decide requests,
-// cancel and move a booking, and adjust and settle a fine -- so run it against a
-// freshly seeded backend and re-seed afterwards. The admin steps need an admin account. Its password is read from
+// renews a loan, reports a seat, returns an overdue loan, and has an admin decide
+// requests, cancel and move a booking, remind an overdue loan, and (after the
+// student disputes it) adjust and settle a fine -- so run it against a freshly seeded
+// backend and re-seed afterwards. The admin
+// steps need an admin account. Its password is read from
 // a file, so it never appears in a command line or a log:
 //
 //   cd ../backend && npm run seed && npm run dev      # separate terminal
@@ -273,23 +275,72 @@ Future<void> main() async {
       token: adminToken, body: {'resourceId': targets.first['id']}), 200);
   await _save('bookings_me_library', 'GET', '/bookings/me', expect: 200, token: token);
 
+  // --- A problem report -------------------------------------------------------
+  // The last of the booking steps, so no list captured above sees an open report.
+  // Aditi checked into s3 (Silent Zone Desk 3) a moment ago (booking_checked_in), a
+  // booking that started within the week, which entitles her to report that desk. The
+  // report is on the resource, so every booking of hers on it then reads `reportOpen`
+  // and none offers `canReport`.
+  final report = await _call('POST', '/reports', token: token,
+      body: {'resourceId': 's3', 'category': 'not_working', 'note': 'The desk lamp does not switch on.'});
+  _check('reporting s3', report, 201);
+  final reported = await _save('bookings_me_reported', 'GET', '/bookings/me', expect: 200, token: token);
+  final onS3 = reported is List ? reported.cast<Map<String, dynamic>>().where((b) => b['resourceId'] == 's3') : const <Map<String, dynamic>>[];
+  if (onS3.isEmpty || onS3.any((b) => b['reportOpen'] != true || b['canReport'] != false)) {
+    throw StateError('GET /bookings/me does not read reportOpen (and not canReport) on every s3 booking: $reported');
+  }
+
   // --- Fines ----------------------------------------------------------------
-  // Last, so nothing captured above sees the loan gone. Returning Aditi's
-  // overdue loan (b4, due 3 days ago) writes a 30-rupee overdue fine (the seed
-  // leaves her with none). The admin then lowers it to 20 with a reason, and
-  // records it paid: the three states a student sees.
+  // Last, so nothing captured above sees the loan gone. Aditi's overdue loan (b4,
+  // due 3 days ago) is first reminded by the admin, which writes the library
+  // notice captured at the end: only an open loan can be reminded, and the return
+  // below closes it. Returning it then writes a 30-rupee overdue fine (the seed
+  // leaves her with none). The student disputes it (an open dispute), then the
+  // admin lowers it to 20 with a reason, naming the dispute they read in the fines
+  // list, which closes it, and records it paid: the states a student sees.
   final b4Loan = (loans as List).cast<Map<String, dynamic>>().firstWhere((l) => l['bookId'] == 'b4');
+  _check('reminding b4', await _call('POST', '/admin/loans/${b4Loan['id']}/remind', token: adminToken), 200);
   _check('returning b4', await _call('POST', '/loans/${b4Loan['id']}/return', token: token), 200);
   Map<String, dynamic> overdueFine(Object? body) => ((body! as Map<String, dynamic>)['fines'] as List)
       .cast<Map<String, dynamic>>()
       .firstWhere((f) => f['reason'] == 'overdue');
   final fineId = overdueFine(await _save('fines_me', 'GET', '/fines/me', expect: 200, token: token))['id'] as String;
+  _check('disputing the fine', await _call('POST', '/fines/$fineId/dispute',
+      token: token, body: {'reason': 'The desk scanned my return a day late.'}), 201);
+  final disputed = overdueFine(await _save('fines_me_disputed', 'GET', '/fines/me', expect: 200, token: token));
+  final openDispute = disputed['dispute'];
+  if (openDispute is! Map<String, dynamic> || openDispute['status'] != 'open') {
+    throw StateError('GET /fines/me holds no open dispute on the fine: $openDispute');
+  }
+  // The dispute's id is the librarian's to read: it comes with the fine in the
+  // admin's list, and the adjustment must name it to close it.
+  final adminFines = await _call('GET', '/admin/fines?status=disputed&pageSize=100', token: adminToken);
+  _check('listing the disputed fines', adminFines, 200);
+  final adminRow = ((adminFines.body! as Map<String, dynamic>)['fines'] as List)
+      .cast<Map<String, dynamic>>()
+      .firstWhere((f) => f['id'] == fineId, orElse: () => throw StateError('The admin list has no disputed fine $fineId.'));
+  final disputeId = (adminRow['dispute']! as Map<String, dynamic>)['id'] as String;
   _check('adjusting the fine', await _call('POST', '/admin/fines/$fineId/adjust',
-      token: adminToken, body: {'amount': 20, 'reason': 'Returned during exam week'}), 200);
-  await _save('fines_me_adjusted', 'GET', '/fines/me', expect: 200, token: token);
+      token: adminToken, body: {'amount': 20, 'reason': 'Returned during exam week', 'disputeId': disputeId}), 200);
+  final adjusted = overdueFine(await _save('fines_me_adjusted', 'GET', '/fines/me', expect: 200, token: token));
+  final closedDispute = adjusted['dispute'];
+  if (closedDispute is! Map<String, dynamic> || closedDispute['status'] != 'adjusted') {
+    throw StateError('GET /fines/me holds no adjusted dispute on the fine: $closedDispute');
+  }
   _check('marking it paid', await _call('POST', '/admin/fines/$fineId/paid',
       token: adminToken, body: {'amount': 20}), 200);
   await _save('fines_me_paid', 'GET', '/fines/me', expect: 200, token: token);
+
+  // --- Library notices ------------------------------------------------------
+  // The reminder the admin sent above. Its email status is 'skipped' only because the
+  // demo student's address is a placeholder, which the mailer never sends to; a dev
+  // backend can have email configured (it was found enabled), so run this capture only
+  // as a placeholder student, never as one with a real address. The student's list
+  // carries no email status.
+  final notices = await _save('notices_me', 'GET', '/notices/me', expect: 200, token: token);
+  if (notices is! List || !notices.any((n) => (n as Map<String, dynamic>)['kind'] == 'overdue_reminder')) {
+    throw StateError('GET /notices/me holds no overdue_reminder notice: $notices');
+  }
 
   _client.close();
   stdout.writeln('Done. Now re-seed the backend: cd ../backend && npm run seed');

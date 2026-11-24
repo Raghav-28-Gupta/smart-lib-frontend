@@ -16,6 +16,20 @@ part 'resource_booking.g.dart';
 /// whole list.
 enum BookingStatus { upcomingFar, inWindow, checkedIn, released, requested, declined, expired, cancelledByLibrary, unknown }
 
+/// What a student can say is wrong with a seat or room they booked. These are the
+/// three categories `POST /reports` takes for a resource (`not_working`, `dirty`,
+/// `other`); the copy categories are offered only when a book is returned.
+enum ResourceReportCategory {
+  notWorking('not_working'),
+  dirty('dirty'),
+  other('other');
+
+  const ResourceReportCategory(this.wireName);
+
+  /// How the server spells it.
+  final String wireName;
+}
+
 /// How long after its start a booking can still be checked into. Mirrors
 /// GRACE_PERIOD_MINUTES in backend/src/config/constants.ts.
 const kCheckInGracePeriod = Duration(minutes: 15);
@@ -38,11 +52,19 @@ class ResourceBooking {
     this.declineReason,
     this.cancelReason,
     this.movedFrom,
+    this.resourceId = '',
+    this.canReport = false,
+    this.reportOpen = false,
   });
 
   factory ResourceBooking.fromJson(Map<String, dynamic> json) => _$ResourceBookingFromJson(json);
 
   final String id;
+
+  /// The seat or room booked: what a report of it names. Empty from a server that
+  /// predates reports, which never marks a booking `canReport` either.
+  @JsonKey(defaultValue: '')
+  final String resourceId;
   final String resourceName;
 
   @JsonKey(name: 'resourceType')
@@ -75,6 +97,17 @@ class ResourceBooking {
   /// The name of the resource a librarian moved this booking off. The server
   /// sends it for a week after the move and null otherwise.
   final String? movedFrom;
+
+  /// This booking entitles the student to report its seat or room (a booking that
+  /// started within the last week or starts within a day, which they have not yet
+  /// reported). The server decides; the app only offers the button.
+  @JsonKey(defaultValue: false)
+  final bool canReport;
+
+  /// The student has an open report on this booking's resource, so the card reads
+  /// "Reported". True for every booking of theirs on that resource.
+  @JsonKey(defaultValue: false)
+  final bool reportOpen;
 
   /// '3:00 – 5:00 PM'. Derived from the real times rather than stored, so it
   /// can't disagree with them -- and it renders bookings that don't start
@@ -109,10 +142,10 @@ class ResourceBooking {
     );
   }
 
-  ResourceBooking copyWith(
-          {BookingStatus? status, int? graceRemainingSeconds}) =>
+  ResourceBooking copyWith({BookingStatus? status, int? graceRemainingSeconds, bool? canReport, bool? reportOpen}) =>
       ResourceBooking(
         id: id,
+        resourceId: resourceId,
         resourceName: resourceName,
         type: type,
         startTime: startTime,
@@ -124,5 +157,7 @@ class ResourceBooking {
         declineReason: declineReason,
         cancelReason: cancelReason,
         movedFrom: movedFrom,
+        canReport: canReport ?? this.canReport,
+        reportOpen: reportOpen ?? this.reportOpen,
       );
 }

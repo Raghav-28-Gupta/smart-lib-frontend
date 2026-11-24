@@ -6,6 +6,20 @@ part of 'fine.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+FineDispute _$FineDisputeFromJson(Map<String, dynamic> json) => FineDispute(
+      status: $enumDecode(_$DisputeStatusEnumMap, json['status'],
+          unknownValue: DisputeStatus.unknown),
+      note: json['note'] as String?,
+    );
+
+const _$DisputeStatusEnumMap = {
+  DisputeStatus.open: 'open',
+  DisputeStatus.waived: 'waived',
+  DisputeStatus.adjusted: 'adjusted',
+  DisputeStatus.upheld: 'upheld',
+  DisputeStatus.unknown: 'unknown',
+};
+
 Fine _$FineFromJson(Map<String, dynamic> json) => Fine(
       id: json['id'] as String,
       reason: $enumDecode(_$FineReasonEnumMap, json['reason'],
@@ -17,6 +31,9 @@ Fine _$FineFromJson(Map<String, dynamic> json) => Fine(
           unknownValue: FineStatus.unknown),
       date: localDateTime(json['date'] as String),
       note: json['note'] as String?,
+      dispute: json['dispute'] == null
+          ? null
+          : FineDispute.fromJson(json['dispute'] as Map<String, dynamic>),
     );
 
 const _$FineReasonEnumMap = {
