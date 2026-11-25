@@ -1,0 +1,23 @@
+[
+  {
+    "id": "aa5c3995-cf75-4e8c-966d-7c55c8fa28e5",
+    "kind": "no_show_outcome",
+    "title": "No-show removed",
+    "body": "The library removed the no-show for Group Room 201 · 4 seats (Mon, Nov 23) and restored your reliability score to 52.\n\nNote from the library: The desk scanner was down that morning",
+    "createdAt": "2026-11-25T07:22:57.943Z"
+  },
+  {
+    "id": "81d2743e-97e1-414f-8f7f-9e550a5530c4",
+    "kind": "dispute_outcome",
+    "title": "Your fine was reduced",
+    "body": "The library reduced your fine for Computer Networks to ₹20 (it was ₹30).\n\nNote from the library: Returned during exam week",
+    "createdAt": "2026-11-25T07:22:52.554Z"
+  },
+  {
+    "id": "828230a9-ca58-4e91-9acd-c5695e9a991c",
+    "kind": "overdue_reminder",
+    "title": "Overdue book reminder",
+    "body": "Your copy of Computer Networks was due on 22 Nov 2026 and is 3 days overdue. The fine is ₹30 so far and grows by ₹10 a day. Please return it to the library.",
+    "createdAt": "2026-11-25T07:22:46.080Z"
+  }
+]

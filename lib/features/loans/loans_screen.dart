@@ -103,12 +103,14 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
     final noFines = own(ref.watch(finesControllerProvider))?.fines.isEmpty ?? false;
     // A student whose only news is a notice (the outcome of a report on a book they
     // returned) must see it, not the empty state, so that waits for the notices too.
-    // They are secondary, though: a list that could not be loaded does not keep the
-    // empty state away. The error shows at once, retries included; a loading state
-    // still holding the last student's error is not theirs (as for the fines below).
+    // Only the ones this screen shows count: a booking notice is My Bookings', so it
+    // neither shows here nor keeps the empty state away. They are secondary, though: a
+    // list that could not be loaded does not keep the empty state away. The error shows
+    // at once, retries included; a loading state still holding the last student's error
+    // is not theirs (as for the fines below).
     final noticesState = ref.watch(noticesControllerProvider);
     final noticesFailed = noticesState.hasError && (!noticesState.isLoading || noticesState.retrying);
-    final noNotices = noticesFailed || (own(noticesState)?.isEmpty ?? false);
+    final noNotices = noticesFailed || (own(noticesState)?.every((n) => !loanNoticeKinds.contains(n.kind)) ?? false);
     return PendingRefresh(
       active: requests.anyPending,
       onTick: _recheck,
@@ -132,8 +134,10 @@ class _LoansScreenState extends ConsumerState<LoansScreen> {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // Hides itself when there are none, while they load and when they fail.
-                const NoticesSection(),
+                // The loan and fine kinds (and any this version doesn't know); the booking
+                // ones are My Bookings'. Hides itself when there are none, while they load and
+                // when they fail.
+                NoticesSection(kinds: loanNoticeKinds),
                 if (requests.isNotEmpty) ...[
                   Text('Requests', style: heading),
                   const SizedBox(height: 6),

@@ -2,7 +2,8 @@
 
 The SmartLib student app: catalog search, borrowing and the waitlist, loans and
 renewals, fines (and disputing them), library notices, seat and room booking with
-check-in, problem reports, reliability, and recommendations. One codebase for
+check-in, problem reports, missed-booking (no-show) disputes, reliability, and
+recommendations. One codebase for
 **web, Android, and Windows**.
 
 The app talks to exactly one server, the Node backend on port 3000. It has no
@@ -143,7 +144,12 @@ booking, remind the demo student's overdue loan (the library notice saved as
 `notices_me`) and answer the student's dispute of the fine that loan's return
 wrote (saved as `fines_me_disputed`, `fines_me_adjusted`), and has the student
 report the seat they checked into (saved as `bookings_me_reported`, where every
-booking on that seat reads `reportOpen`), so it needs an admin account (`cd ../backend && npm run create-admin`). Its password is read from a
+booking on that seat reads `reportOpen`), and, last, has the student dispute the
+no-show the seed gives them (`bookings_me_no_show` before and
+`bookings_me_no_show_disputed` after) and the admin overturn it from the Needs
+attention queue (the outcome notice is saved in `notices_me_no_show_outcome`; every
+`GET /bookings/me` it captures also lists that seeded no-show as a `released`
+booking with `noShow`), so it needs an admin account (`cd ../backend && npm run create-admin`). Its password is read from a
 file so it never lands in your shell history. In PowerShell, set the two
 variables first:
 
@@ -153,8 +159,13 @@ $env:SMARTLIB_ADMIN_PASSWORD_FILE = 'C:\path\to\password.txt'
 dart run tool/capture_fixtures.dart
 ```
 
-A key the backend adds to a response (a fine's `dispute`, a booking's `canReport`
-and `reportOpen`) is additive: an older app ignores it, and the models read it as
+The availability fixtures depend on the time of day (a seeded "taken" booking that
+is already over becomes a no-show and stops holding its slot), so if
+`resource_json_test.dart` says room `r2` has no taken slots ("captured too late in
+the day"), re-capture earlier in the day.
+
+A key the backend adds to a response (a fine's `dispute`, a booking's `canReport`,
+`reportOpen` and `noShow`) is additive: an older app ignores it, and the models read it as
 optional or with a default, so an older server's response still parses (the
 booking's `resourceId`, which the backend already sent, is likewise read with a
 default, `''`).
@@ -261,6 +272,7 @@ when you're done, because the steps change the demo data.
 | 21 | **Relaunch** (web: reload the page; Windows: close the window and run again; Android: swipe it away from Recents and reopen) | Splash, then Home, **without logging in** | ☐ | ☐ | ☐ |
 | 22 | **Expired session**: restart the backend with a throwaway secret (below), then type in Search | Back on Log in with *Your session has expired. Please log in again.* | ☐ | ☐ | ☐ |
 | 23 | Restart the backend normally and log in again | Home | ☐ | ☐ | ☐ |
+| 24 | On a freshly seeded backend, log in as the demo user and open Bookings. On the *Group Room 201* card that reads *Missed. A no-show was recorded.*, tap **Dispute**, write a reason and **Send** | Toast *Dispute sent.*; the button is replaced by *Under review* and stays that way after you leave the tab and come back | ☐ | ☐ | ☐ |
 
 **Steps 13 and 16 need two clients.** A held copy needs a second student
 to return a book you're queued for. And the picker greys out slots that are
@@ -309,7 +321,7 @@ lib/
     ├── waitlist/              # join/leave, place in line, copies held for you
     ├── loans/                 # active loans, renew, return
     ├── fines/                 # the student's fines (the Fines section of My Loans)
-    ├── notices/               # library notices (the Library notices section of My Loans)
+    ├── notices/               # library notices (the Library notices section of My Loans and My Bookings)
     ├── bookings/              # booking flow, conflicts, check-in, time slots
     ├── profile/               # reliability
     ├── recommendations/
@@ -385,10 +397,38 @@ tool/capture_fixtures.dart     # refreshes test/fixtures from a live backend
   second attempt, say from another device, is refused with the library's own message
   and the card catches up). The library's answer arrives as a library notice (below),
   after which the button comes back for a booking that is still within the window.
-- **Library notices show when you open My Loans.** A **Library notices** section
-  at the top of My Loans lists the library's messages to you from the last 7 days
-  (at most 20, newest first): a librarian's overdue reminder or formal notice, or
-  the outcome of a dispute or a report. Each shows its title, text and date, and a formal
+- **A missed booking can be disputed from My Bookings.** A booking you did not
+  check into is recorded by the library as a no-show within minutes of its grace
+  period ending, your reliability score drops, and the card reads *Missed. A no-show
+  was recorded.* (the server tells it apart from a plain release, which keeps its old
+  text *This booking was released after the grace period.*). While the library says
+  you still can (no dispute yet and inside 7 days of the grace period's end; the app
+  never works that out itself) a **Dispute** button opens *Dispute this no-show*: one
+  multi-line field, *Why do you think this no-show is wrong?*, at most 300
+  characters counted as for a fine dispute, **Send** off until there is text. After
+  sending (toast *Dispute sent.*) the button is gone for good and a line under the
+  missed line reads *Under review*; the library's answer arrives as a library
+  notice and on the card: *No-show stands* (with their note) leaves the missed line
+  above it, and *No-show removed* (with their note) replaces both lines. If the
+  library refuses (the 7 days passed, or you already disputed it from another
+  device) the dialog stays and a toast gives its reason. A missed booking stays in
+  the list and, within the usual window, can still be reported (**Report a
+  problem**), for the student who found the seat broken and left.
+- **Library notices show when you open My Loans or My Bookings.** A **Library
+  notices** section at the top of My Loans lists the library's messages to you from
+  the last 7 days (at most 20, newest first): a librarian's overdue reminder or
+  formal notice, or the outcome of a dispute or a report. The three booking kinds
+  show at the top of **My Bookings** instead: a *Your booking starts soon* reminder
+  (written up to 30 minutes before the start, for a booking made, or a room approved,
+  at least 30 minutes before it; it disappears once you check in or cancel, or its
+  grace period ends),
+  *Missed booking* when a no-show is recorded, and the *No-show removed* or *No-show
+  stands* outcome of a dispute. My Bookings re-checks them each time its tab is
+  selected, and on its 30-second re-check while a room request is waiting; with an
+  ordinary booking and nothing pending, a reminder appears the next time you open the
+  tab (nothing is pushed). A section with none of its kinds shows nothing, and an
+  older app shows every kind on My Loans. Seats get no reminder email, so this
+  section is their only reminder; rooms also get one by email. Each shows its title, text and date, and a formal
   overdue notice is drawn in the accent colour. The section is absent when there
   are none, while they load and when they can't be loaded (no error is shown; the
   next time you open My Loans asks again). Like the loans and the fines, they are

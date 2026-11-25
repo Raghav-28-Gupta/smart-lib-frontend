@@ -67,7 +67,8 @@ void main() {
 
   test('myBookings fetches the user\'s bookings', () async {
     final (bookings, stub) = repo((_) => StubResponse(200, fixture('bookings_me')));
-    expect(await bookings.myBookings(), hasLength(2));
+    // The two the capture made, and the demo student's seeded no-show.
+    expect(await bookings.myBookings(), hasLength(3));
     expect(stub.requests.single.path, '/bookings/me');
   });
 
@@ -157,6 +158,73 @@ void main() {
       final (bookings, _) = repo((_) => StubResponse(200, fixture('bookings_me_reported')));
       final listed = await bookings.myBookings();
       expect(listed.where((b) => b.resourceId == 's3' && b.reportOpen && !b.canReport), isNotEmpty);
+    });
+  });
+
+  group('POST /bookings/:id/dispute', () {
+    test('disputeNoShow posts {reason} to the booking', () async {
+      final (bookings, stub) = repo((_) => const StubResponse(201, {'id': 'nsd-1', 'status': 'open'}));
+      await bookings.disputeNoShow('bk-1', 'The desk scanner was down when I arrived.');
+
+      final request = stub.requests.single;
+      expect(request.method, 'POST');
+      expect(request.path, '/bookings/bk-1/dispute');
+      expect(request.data, {'reason': 'The desk scanner was down when I arrived.'});
+    });
+
+    test('the booking id is encoded into the path, the reason is sent as given', () async {
+      final (bookings, stub) = repo((_) => const StubResponse(201, {'id': 'nsd-1', 'status': 'open'}));
+      await bookings.disputeNoShow('a/b c', 'I was there.');
+      expect(stub.requests.single.path, '/bookings/a%2Fb%20c/dispute');
+      expect(stub.requests.single.data, {'reason': 'I was there.'});
+    });
+
+    test("a 409 is a ConflictException carrying the server's own message", () async {
+      for (final message in [
+        'This booking is not a recorded no-show.',
+        "You've already disputed this no-show.",
+        'The 7 days to dispute this no-show have passed.',
+      ]) {
+        final (bookings, _) = repo((_) => StubResponse(409, {'error': message}));
+        await expectLater(
+          bookings.disputeNoShow('bk-1', 'I was there.'),
+          throwsA(isA<ConflictException>().having((e) => e.message, 'message', message)),
+          reason: message,
+        );
+      }
+    });
+
+    test("a 404 and a 400 carry the server's message too", () async {
+      final (gone, _) = repo((_) => const StubResponse(404, {'error': 'Booking not found'}));
+      await expectLater(
+        gone.disputeNoShow('someone-elses', 'I was there.'),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'statusCode', 404).having((e) => e.message, 'message', 'Booking not found')),
+      );
+
+      // The captured 400 (a bad body): the app shows the server's own text.
+      final (bad, _) = repo((_) => StubResponse(400, fixture('error_400')));
+      await expectLater(
+        bad.disputeNoShow('bk-1', 'x' * 301),
+        throwsA(isA<ApiException>()
+            .having((e) => e.statusCode, 'statusCode', 400)
+            .having((e) => e.message, 'message', (fixture('error_400') as Map)['error'])),
+      );
+    });
+
+    test('a network failure is an ApiException with status 0', () async {
+      final (bookings, _) = repo((options) => throw DioException.connectionError(requestOptions: options, reason: 'offline'));
+      await expectLater(
+        bookings.disputeNoShow('bk-1', 'I was there.'),
+        throwsA(isA<ApiException>().having((e) => e.isNetworkError, 'isNetworkError', true)),
+      );
+    });
+
+    test('GET /bookings/me carries noShow, as captured', () async {
+      final (bookings, _) = repo((_) => StubResponse(200, fixture('bookings_me_no_show')));
+      final listed = await bookings.myBookings();
+      final missed = listed.singleWhere((b) => b.noShow?.canDispute == true);
+      expect(missed.status, BookingStatus.released);
+      expect(missed.noShow!.dispute, isNull);
     });
   });
 }

@@ -20,5 +20,8 @@ const _$NoticeKindEnumMap = {
   NoticeKind.overdueEscalation: 'overdue_escalation',
   NoticeKind.disputeOutcome: 'dispute_outcome',
   NoticeKind.reportOutcome: 'report_outcome',
+  NoticeKind.bookingReminder: 'booking_reminder',
+  NoticeKind.noShow: 'no_show',
+  NoticeKind.noShowOutcome: 'no_show_outcome',
   NoticeKind.unknown: 'unknown',
 };

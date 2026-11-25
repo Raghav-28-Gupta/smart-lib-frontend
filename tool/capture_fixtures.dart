@@ -7,8 +7,9 @@
 //
 // It MUTATES the dev database -- creates bookings and requests, checks in,
 // renews a loan, reports a seat, returns an overdue loan, and has an admin decide
-// requests, cancel and move a booking, remind an overdue loan, and (after the
-// student disputes it) adjust and settle a fine -- so run it against a freshly seeded
+// requests, cancel and move a booking, remind an overdue loan, (after the
+// student disputes it) adjust and settle a fine, and (after the student disputes
+// her seeded no-show) overturn that -- so run it against a freshly seeded
 // backend and re-seed afterwards. The admin
 // steps need an admin account. Its password is read from
 // a file, so it never appears in a command line or a log:
@@ -340,6 +341,64 @@ Future<void> main() async {
   final notices = await _save('notices_me', 'GET', '/notices/me', expect: 200, token: token);
   if (notices is! List || !notices.any((n) => (n as Map<String, dynamic>)['kind'] == 'overdue_reminder')) {
     throw StateError('GET /notices/me holds no overdue_reminder notice: $notices');
+  }
+
+  // --- A no-show and its dispute ---------------------------------------------
+  // Last: the seed gives the demo student one recent no-show she can still dispute (a
+  // room booking of hers, Group Room 201, the sweep released), so it is in every GET /bookings/me
+  // captured above too, as a `released` booking with `noShow`. Here she disputes it
+  // (`bookings_me_no_show` is the list before, `bookings_me_no_show_disputed` after: an
+  // open dispute), then the admin overturns it, by the dispute id the Needs attention
+  // queue lists for that booking, which writes the `no_show_outcome` notice captured as
+  // `notices_me_no_show_outcome` (it holds the earlier notices too). The `no_show` and
+  // `booking_reminder` notice kinds are written by the sweep, which does not run here, so
+  // tests build those two payloads themselves (notice_json_test.dart says so).
+  Map<String, dynamic>? bookingById(Object? body, String id) {
+    if (body is! List) return null;
+    for (final b in body.cast<Map<String, dynamic>>()) {
+      if (b['id'] == id) return b;
+    }
+    return null;
+  }
+
+  final beforeDispute = await _save('bookings_me_no_show', 'GET', '/bookings/me', expect: 200, token: token);
+  final missedBooking = (beforeDispute is List ? beforeDispute.cast<Map<String, dynamic>>() : const <Map<String, dynamic>>[])
+      .where((b) => (b['noShow'] as Map<String, dynamic>?)?['canDispute'] == true)
+      .toList();
+  if (missedBooking.length != 1) {
+    throw StateError('Expected exactly one booking with noShow.canDispute true (the seed gives the demo student one; '
+        're-seed, its 7 days may have passed), found ${missedBooking.length}: $beforeDispute');
+  }
+  final missedId = missedBooking.single['id'] as String;
+  final disputeAnswer = await _call('POST', '/bookings/$missedId/dispute',
+      token: token, body: {'reason': 'The desk scanner was down when I arrived.'});
+  _check('disputing the no-show', disputeAnswer, 201);
+  if ((disputeAnswer.body! as Map<String, dynamic>)['status'] != 'open') {
+    throw StateError('POST /bookings/$missedId/dispute did not answer an open dispute: ${disputeAnswer.body}');
+  }
+  final afterDispute = await _save('bookings_me_no_show_disputed', 'GET', '/bookings/me', expect: 200, token: token);
+  final noShowNow = bookingById(afterDispute, missedId)?['noShow'];
+  final openNoShow = noShowNow is Map<String, dynamic> ? noShowNow['dispute'] : null;
+  if (noShowNow is! Map<String, dynamic> ||
+      noShowNow['canDispute'] != false ||
+      openNoShow is! Map<String, dynamic> ||
+      openNoShow['status'] != 'open') {
+    throw StateError('GET /bookings/me holds no open no-show dispute on $missedId: $noShowNow');
+  }
+  final attention = await _call('GET', '/admin/attention', token: adminToken);
+  _check('listing the Needs attention queue', attention, 200);
+  final noShowItems = ((attention.body! as Map<String, dynamic>)['items'] as List)
+      .cast<Map<String, dynamic>>()
+      .where((i) => i['kind'] == 'no_show_dispute' && (i['noShow'] as Map<String, dynamic>)['bookingId'] == missedId)
+      .toList();
+  if (noShowItems.length != 1) {
+    throw StateError('The queue holds ${noShowItems.length} no_show_dispute items for booking $missedId, expected 1.');
+  }
+  _check('overturning the no-show', await _call('POST', '/admin/no-show-disputes/${noShowItems.single['id']}/overturn',
+      token: adminToken, body: {'reason': 'The desk scanner was down that morning'}), 200);
+  final outcomeNotices = await _save('notices_me_no_show_outcome', 'GET', '/notices/me', expect: 200, token: token);
+  if (outcomeNotices is! List || !outcomeNotices.any((n) => (n as Map<String, dynamic>)['kind'] == 'no_show_outcome')) {
+    throw StateError('GET /notices/me holds no no_show_outcome notice: $outcomeNotices');
   }
 
   _client.close();

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../core/theme/smartlib_tokens.dart';
 
 /// The longest note or reason the server takes: `z.string().trim().max(300)` on a fine
-/// dispute's reason, a copy report's note (sent with the return) and a seat or room
-/// report's note. One constant for all three.
+/// dispute's reason, a no-show dispute's reason, a copy report's note (sent with the
+/// return) and a seat or room report's note. One constant for all four.
 const kMaxNoteLength = 300;
 
 /// What a [NoteField] says under itself once its text is over [kMaxNoteLength].
@@ -22,9 +22,9 @@ int noteLength(String text) => text.trim().length;
 /// typed: the field says so and the dialog's button stays off until they shorten it.
 bool noteTooLong(String text) => noteLength(text) > kMaxNoteLength;
 
-/// A multi-line field for a note or a reason, shared by the three dialogs that take one
-/// (the fine dispute, the Return dialog's report and the seat or room report), so that
-/// they count, warn and look the same.
+/// A multi-line field for a note or a reason, shared by the dialogs that take one (the
+/// fine dispute, the no-show dispute, the Return dialog's report and the seat or room
+/// report), so that they count, warn and look the same.
 ///
 /// - **Counts like the server**: the counter reads `n/300` of the trimmed text in UTF-16
 ///   code units ([noteLength]); there is no `maxLength`, and nothing the student typed is

@@ -7,9 +7,10 @@ export 'resource.dart';
 part 'resource_booking.g.dart';
 
 /// Wire values are the backend's `frontendStatus` strings, which already use
-/// these exact names. 'released' is computed server-side at read time (grace
-/// window elapsed without check-in) -- it's never persisted. A room booking
-/// is 'requested' until a librarian decides; 'declined' and 'expired' are its
+/// these exact names. 'released' is the read-time status of a booking whose grace
+/// window elapsed without check-in; a recorded no-show, and one that was
+/// overturned, arrive as 'released' too, and [ResourceBooking.noShow] tells them
+/// apart. A room booking is 'requested' until a librarian decides; 'declined' and 'expired' are its
 /// two unhappy endings. [cancelledByLibrary] is a booking a librarian cancelled
 /// (the student's own cancel never appears in the list). [unknown] stands in
 /// for a status this version doesn't know, so one new value never fails the
@@ -28,6 +29,43 @@ enum ResourceReportCategory {
 
   /// How the server spells it.
   final String wireName;
+}
+
+/// Where the student's dispute of a recorded no-show stands. [open] waits for a
+/// librarian; [overturned] (the no-show was removed) and [upheld] (it stands) are
+/// the answer. [unknown] stands in for a status this version doesn't know, so one
+/// new value never fails the whole list.
+enum NoShowDisputeStatus { open, overturned, upheld, unknown }
+
+/// The student's one dispute of a no-show, open or answered.
+@JsonSerializable(createToJson: false)
+class NoShowDisputeInfo {
+  const NoShowDisputeInfo({required this.status, this.note});
+
+  factory NoShowDisputeInfo.fromJson(Map<String, dynamic> json) => _$NoShowDisputeInfoFromJson(json);
+
+  @JsonKey(unknownEnumValue: NoShowDisputeStatus.unknown)
+  final NoShowDisputeStatus status;
+
+  /// The librarian's note: null while the dispute is open, and when they gave none.
+  final String? note;
+}
+
+/// What the server says of a booking it recorded as a no-show (the student did not
+/// check in, so the slot was released and their reliability went down). Only the
+/// server decides any of it; the app never works the window out itself.
+@JsonSerializable(createToJson: false)
+class NoShowInfo {
+  const NoShowInfo({required this.canDispute, this.dispute});
+
+  factory NoShowInfo.fromJson(Map<String, dynamic> json) => _$NoShowInfoFromJson(json);
+
+  /// The student may still dispute it: no dispute yet and the 7 days are not over.
+  @JsonKey(defaultValue: false)
+  final bool canDispute;
+
+  /// The student's dispute, or null when they never disputed it.
+  final NoShowDisputeInfo? dispute;
 }
 
 /// How long after its start a booking can still be checked into. Mirrors
@@ -55,6 +93,7 @@ class ResourceBooking {
     this.resourceId = '',
     this.canReport = false,
     this.reportOpen = false,
+    this.noShow,
   });
 
   factory ResourceBooking.fromJson(Map<String, dynamic> json) => _$ResourceBookingFromJson(json);
@@ -109,6 +148,12 @@ class ResourceBooking {
   @JsonKey(defaultValue: false)
   final bool reportOpen;
 
+  /// Set when the library recorded this booking as a no-show, null for every other
+  /// booking and for an older server, which never sends it. A no-show's [status]
+  /// stays [BookingStatus.released] (an older app shows its released text); this is
+  /// what tells the two apart.
+  final NoShowInfo? noShow;
+
   /// '3:00 – 5:00 PM'. Derived from the real times rather than stored, so it
   /// can't disagree with them -- and it renders bookings that don't start
   /// on the hour, which a lookup into kTimeSlots could not.
@@ -142,7 +187,7 @@ class ResourceBooking {
     );
   }
 
-  ResourceBooking copyWith({BookingStatus? status, int? graceRemainingSeconds, bool? canReport, bool? reportOpen}) =>
+  ResourceBooking copyWith({BookingStatus? status, int? graceRemainingSeconds, bool? canReport, bool? reportOpen, NoShowInfo? noShow}) =>
       ResourceBooking(
         id: id,
         resourceId: resourceId,
@@ -159,5 +204,6 @@ class ResourceBooking {
         movedFrom: movedFrom,
         canReport: canReport ?? this.canReport,
         reportOpen: reportOpen ?? this.reportOpen,
+        noShow: noShow ?? this.noShow,
       );
 }

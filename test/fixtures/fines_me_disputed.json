@@ -1,13 +1,13 @@
 {
   "fines": [
     {
-      "id": "6a2c5774-d868-42fc-bf79-3653d0f759de",
+      "id": "0296d64c-2c86-4bbd-958a-40b215e5c9a8",
       "reason": "overdue",
       "item": "Computer Networks",
       "amount": 30,
       "originalAmount": 30,
       "status": "outstanding",
-      "date": "2026-11-22T17:49:36.407Z",
+      "date": "2026-11-25T07:22:47.517Z",
       "note": null,
       "dispute": {
         "status": "open",

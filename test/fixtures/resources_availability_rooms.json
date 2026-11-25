@@ -5,10 +5,7 @@
     "name": "Discussion Pod 1 · 2 seats",
     "location": "Discussion pods",
     "capacity": 2,
-    "takenSlotsToday": [
-      "10:00 AM",
-      "11:00 AM"
-    ]
+    "takenSlotsToday": []
   },
   {
     "id": "r1",
@@ -28,10 +25,6 @@
     "location": "Group study rooms",
     "capacity": 6,
     "takenSlotsToday": [
-      "9:00 AM",
-      "10:00 AM",
-      "11:00 AM",
-      "12:00 PM",
       "1:00 PM",
       "2:00 PM",
       "3:00 PM",

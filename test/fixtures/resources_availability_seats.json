@@ -5,10 +5,7 @@
     "name": "Reading Room A · Desk 12",
     "location": "Reading Room A",
     "capacity": 1,
-    "takenSlotsToday": [
-      "11:00 AM",
-      "12:00 PM"
-    ]
+    "takenSlotsToday": []
   },
   {
     "id": "s2",
@@ -17,8 +14,6 @@
     "location": "Reading Room A",
     "capacity": 1,
     "takenSlotsToday": [
-      "9:00 AM",
-      "10:00 AM",
       "3:00 PM",
       "4:00 PM"
     ]

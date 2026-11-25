@@ -84,4 +84,106 @@ void main() {
       expect(repo.reports, isEmpty);
     });
   });
+
+  group('disputeNoShow', () {
+    // A booking the library recorded as a no-show, as the server lists it two days later.
+    ResourceBooking missed(String id, {bool canDispute = true, NoShowDisputeInfo? dispute, bool recorded = true}) {
+      final start = DateTime.now().subtract(const Duration(days: 2));
+      return ResourceBooking(
+        id: id, resourceId: 's3', resourceName: 'Silent Zone · Desk 3', type: ResourceType.seat, startTime: start,
+        endTime: start.add(const Duration(hours: 1)), status: BookingStatus.released,
+        noShow: recorded ? NoShowInfo(canDispute: canDispute, dispute: dispute) : null,
+      );
+    }
+
+    test('records each accepted dispute, in order', () async {
+      final repo = MockBookingRepository(bookings: [missed('bk-a'), missed('bk-b')]);
+      await repo.disputeNoShow('bk-a', 'The scanner was down.');
+      await repo.disputeNoShow('bk-b', 'I was there.');
+      expect(repo.noShowDisputes, [
+        (bookingId: 'bk-a', reason: 'The scanner was down.'),
+        (bookingId: 'bk-b', reason: 'I was there.'),
+      ]);
+    });
+
+    test('turns the listed booking into an open dispute that cannot be disputed again, and touches no other', () async {
+      final repo = MockBookingRepository(bookings: [missed('bk-a'), missed('bk-b')]);
+
+      await repo.disputeNoShow('bk-a', 'The scanner was down.');
+
+      final after = await repo.myBookings();
+      final a = after.singleWhere((b) => b.id == 'bk-a');
+      expect(a.noShow!.dispute!.status, NoShowDisputeStatus.open);
+      expect(a.noShow!.dispute!.note, isNull);
+      expect(a.noShow!.canDispute, false);
+      expect(a.status, BookingStatus.released); // a dispute does not change the booking's own status
+      final b = after.singleWhere((b) => b.id == 'bk-b');
+      expect(b.noShow!.dispute, isNull);
+      expect(b.noShow!.canDispute, true);
+    });
+
+    test('a mock built without bookings still lists the two seeded ones', () async {
+      expect(await MockBookingRepository().myBookings(), hasLength(2));
+      expect(await MockBookingRepository(bookings: const []).myBookings(), isEmpty);
+    });
+
+    group('refuses where the server does, and records nothing', () {
+      Future<void> expectRefused(MockBookingRepository repo, String id, int status, String message) async {
+        await expectLater(
+          repo.disputeNoShow(id, 'I was there.'),
+          throwsA(isA<ApiException>()
+              .having((e) => e.statusCode, 'statusCode', status)
+              .having((e) => e.message, 'message', message)),
+        );
+        expect(repo.noShowDisputes, isEmpty);
+      }
+
+      test('a booking that is not in the list is 404', () async {
+        await expectRefused(MockBookingRepository(bookings: [missed('bk-a')]), 'nope', 404, 'Booking not found');
+      });
+
+      test('a booking that was only released, or any seeded one, is not a recorded no-show', () async {
+        await expectRefused(
+            MockBookingRepository(bookings: [missed('bk-a', recorded: false)]), 'bk-a', 409, 'This booking is not a recorded no-show.');
+        await expectRefused(MockBookingRepository(), 'bk1', 409, 'This booking is not a recorded no-show.');
+      });
+
+      test('a no-show past its 7 days is refused', () async {
+        await expectRefused(MockBookingRepository(bookings: [missed('bk-a', canDispute: false)]), 'bk-a', 409,
+            'The 7 days to dispute this no-show have passed.');
+      });
+
+      test('a no-show that was disputed before is refused, whatever became of the dispute', () async {
+        for (final status in [NoShowDisputeStatus.open, NoShowDisputeStatus.overturned, NoShowDisputeStatus.upheld]) {
+          await expectRefused(MockBookingRepository(bookings: [missed('bk-a', canDispute: false, dispute: NoShowDisputeInfo(status: status))]),
+              'bk-a', 409, "You've already disputed this no-show.");
+        }
+      });
+
+      test('the second dispute of one booking is refused', () async {
+        final repo = MockBookingRepository(bookings: [missed('bk-a')]);
+        await repo.disputeNoShow('bk-a', 'I was there.');
+        await expectLater(
+          repo.disputeNoShow('bk-a', 'I was really there.'),
+          throwsA(isA<ConflictException>().having((e) => e.message, 'message', "You've already disputed this no-show.")),
+        );
+        expect(repo.noShowDisputes, hasLength(1));
+      });
+    });
+
+    test('throws what a test sets, records nothing, and goes through again once cleared', () async {
+      final repo = MockBookingRepository(bookings: [missed('bk-a')])
+        ..disputeError = const ConflictException("You've already disputed this no-show.");
+      await expectLater(
+        repo.disputeNoShow('bk-a', 'I was there.'),
+        throwsA(isA<ConflictException>().having((e) => e.message, 'message', "You've already disputed this no-show.")),
+      );
+      expect(repo.noShowDisputes, isEmpty);
+      expect((await repo.myBookings()).single.noShow!.dispute, isNull);
+
+      repo.disputeError = null;
+      await repo.disputeNoShow('bk-a', 'I was there.');
+      expect(repo.noShowDisputes, [(bookingId: 'bk-a', reason: 'I was there.')]);
+    });
+  });
 }

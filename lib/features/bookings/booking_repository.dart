@@ -45,6 +45,15 @@ abstract class BookingRepository {
   /// with a 403 for a resource the student has no qualifying booking on, and a 409
   /// when they already have an open report on it.
   Future<void> reportResource(String resourceId, ResourceReportCategory category, String? note);
+
+  /// Disputes a booking the library recorded as a no-show (`POST /bookings/:id/dispute`),
+  /// once, with the [reason] the student gives (1 to 300 characters, trimmed; the server
+  /// counts UTF-16 code units). The answer carries nothing the app needs: the dispute
+  /// comes back with the bookings (`ResourceBooking.noShow`). Refused with a 409 and the
+  /// server's own message when the booking is not a recorded no-show, was disputed
+  /// before, or its 7 days have passed; with a 404 for a booking that is not the
+  /// student's.
+  Future<void> disputeNoShow(String bookingId, String reason);
 }
 
 class HttpBookingRepository implements BookingRepository {
@@ -106,10 +115,23 @@ class HttpBookingRepository implements BookingRepository {
           if (note != null) 'note': note,
         }));
   }
+
+  @override
+  Future<void> disputeNoShow(String bookingId, String reason) async {
+    await guardApi(() => _dio.post<Object?>('/bookings/${Uri.encodeComponent(bookingId)}/dispute', data: {'reason': reason}));
+  }
 }
 
+/// Test double. Serves the two seeded bookings, or exactly [bookings] when a test gives
+/// its own (as [MockFineRepository] takes its fines). A no-show dispute is refused as
+/// the server refuses it and otherwise recorded in [noShowDisputes] and on the booking
+/// as an open dispute.
 class MockBookingRepository implements BookingRepository {
-  MockBookingRepository() {
+  MockBookingRepository({List<ResourceBooking>? bookings}) {
+    if (bookings != null) {
+      _bookings = List.of(bookings);
+      return;
+    }
     final now = DateTime.now();
     final farStart = now.add(const Duration(hours: 2, minutes: 15));
     // Started 313s ago, so its 587s of grace (900 - 313) is consistent with
@@ -128,6 +150,13 @@ class MockBookingRepository implements BookingRepository {
 
   /// Every report that was accepted, in order.
   final reports = <({String resourceId, ResourceReportCategory category, String? note})>[];
+
+  /// What the student sent, in order, for the no-show disputes the "server" accepted.
+  final noShowDisputes = <({String bookingId, String reason})>[];
+
+  /// When set, [disputeNoShow] throws it (a refusal, a network failure) and records
+  /// nothing; a test clears it to let the next dispute through.
+  Object? disputeError;
 
   String _key(String resourceId, int dateIndex, String slot) => '$resourceId|$dateIndex|$slot';
 
@@ -199,6 +228,30 @@ class MockBookingRepository implements BookingRepository {
     if (!onIt.any((b) => b.canReport)) throw const ApiException(403, 'You can only report a seat or room you have booked.');
     reports.add((resourceId: resourceId, category: category, note: note));
     _bookings = [for (final b in _bookings) b.resourceId == resourceId ? b.copyWith(reportOpen: true, canReport: false) : b];
+  }
+
+  // Refuses much as the server does: a booking that is not the student's is a 404, a no-show
+  // disputed before (whatever became of the dispute) a 409, and so is a booking that is
+  // no recorded no-show or whose 7 days have passed. Otherwise the booking reads as an
+  // open dispute, which can no longer be disputed. The order of the checks is not the
+  // server's, so a few answers differ: for a dispute that was overturned (the booking is
+  // back to a plain release) the server says "not a recorded no-show", and for a
+  // disputed one past the 7 days it gives the window message, where this says "already
+  // disputed" for both. No test depends on it (the refusal tests inject `disputeError`).
+  @override
+  Future<void> disputeNoShow(String bookingId, String reason) async {
+    final error = disputeError;
+    if (error != null) throw error;
+    final at = _bookings.indexWhere((b) => b.id == bookingId);
+    if (at < 0) throw const ApiException(404, 'Booking not found');
+    final noShow = _bookings[at].noShow;
+    if (noShow?.dispute != null) throw const ConflictException("You've already disputed this no-show.");
+    if (noShow == null) throw const ConflictException('This booking is not a recorded no-show.');
+    if (!noShow.canDispute) throw const ConflictException('The 7 days to dispute this no-show have passed.');
+    noShowDisputes.add((bookingId: bookingId, reason: reason));
+    _bookings[at] = _bookings[at].copyWith(
+      noShow: const NoShowInfo(canDispute: false, dispute: NoShowDisputeInfo(status: NoShowDisputeStatus.open)),
+    );
   }
 }
 

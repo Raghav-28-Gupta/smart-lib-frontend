@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/features/auth/auth_controller.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
 import 'package:smartlib_frontend/features/bookings/bookings_controller.dart';
+import 'package:smartlib_frontend/features/notices/notice_repository.dart';
+import 'package:smartlib_frontend/features/notices/notices_controller.dart';
+import 'package:smartlib_frontend/models/notice.dart';
 import 'package:smartlib_frontend/models/resource_booking.dart';
 import '../../support/mock_overrides.dart';
 
@@ -27,6 +30,17 @@ class _RefusingBookingRepository extends _CountingBookingRepository {
       throw const ConflictException('This booking cannot be cancelled.');
 }
 
+/// The mock notices, counting fetches: a read of them again shows as one more.
+class _CountingNotices extends MockNoticeRepository {
+  _CountingNotices({super.notices});
+  int fetches = 0;
+  @override
+  Future<List<Notice>> myNotices() {
+    fetches++;
+    return super.myNotices();
+  }
+}
+
 typedef _Report = ({String resourceId, ResourceReportCategory category, String? note});
 
 /// A seat booking that started ten minutes ago, as the server lists it.
@@ -36,6 +50,22 @@ ResourceBooking _seat(String id, {String resourceId = 's3', bool canReport = tru
     id: id, resourceId: resourceId, resourceName: 'Seat $resourceId', type: ResourceType.seat, startTime: start,
     endTime: start.add(const Duration(hours: 1)), status: BookingStatus.checkedIn,
     canReport: canReport, reportOpen: reportOpen,
+  );
+}
+
+const _openDispute = NoShowInfo(canDispute: false, dispute: NoShowDisputeInfo(status: NoShowDisputeStatus.open));
+
+/// The no-show dispute state of each booking in the list as it stands now (null: no dispute).
+List<NoShowDisputeStatus?> statusesOf(ProviderContainer container) =>
+    [for (final b in container.read(bookingsControllerProvider).value!) b.noShow?.dispute?.status];
+
+/// A seat booking the library recorded as a no-show a day ago, which the student may
+/// still dispute unless [noShow] says otherwise. Its status stays released, as the server's.
+ResourceBooking _missed(String id, {String resourceId = 's3', NoShowInfo noShow = const NoShowInfo(canDispute: true)}) {
+  final start = DateTime.now().subtract(const Duration(days: 1));
+  return ResourceBooking(
+    id: id, resourceId: resourceId, resourceName: 'Seat $resourceId', type: ResourceType.seat, startTime: start,
+    endTime: start.add(const Duration(hours: 1)), status: BookingStatus.released, noShow: noShow,
   );
 }
 
@@ -96,6 +126,27 @@ class _ScriptedBookings extends MockBookingRepository {
   /// The list as the server holds it once the student's report on [resourceId] is open.
   List<ResourceBooking> reported(String resourceId) => [
         for (final b in served) b.resourceId == resourceId ? b.copyWith(reportOpen: true, canReport: false) : b,
+      ];
+
+  /// What the student sent as a no-show dispute, in order, and what the "server" does with
+  /// it: [onDispute] may change [served] (the server recording it) or throw (the server
+  /// refusing it).
+  final disputes = <(String, String)>[];
+  void Function(String bookingId)? onDispute;
+
+  /// Holds the answer to a no-show dispute back until it completes.
+  Completer<void>? disputeGate;
+
+  @override
+  Future<void> disputeNoShow(String bookingId, String reason) async {
+    await disputeGate?.future;
+    disputes.add((bookingId, reason));
+    onDispute?.call(bookingId);
+  }
+
+  /// The list as the server holds it once the student's dispute of [bookingId] is open.
+  List<ResourceBooking> disputedList(String bookingId) => [
+        for (final b in served) b.id == bookingId ? b.copyWith(noShow: _openDispute) : b,
       ];
 }
 
@@ -170,6 +221,71 @@ void main() {
     await expectLater(container.read(bookingsControllerProvider.notifier).cancel('bk1'), throwsA(isA<ConflictException>()));
     await container.read(bookingsControllerProvider.future);
     expect(repo.fetches, 2);
+  });
+
+  // The library hides a booking's reminder as soon as the booking is no longer waiting for a
+  // check-in, so My Bookings must read the notices again after the student's own check-in or
+  // cancel, instead of keeping a "Check in within 15 minutes" next to a card that says
+  // "Enjoy your session." (A refusal, or an answer for a student who has since logged out,
+  // changes nothing.)
+  group("the notices after the student's own check-in or cancel", () {
+    final reminder = Notice(
+      id: 'r1', kind: NoticeKind.bookingReminder, title: 'Your booking starts soon',
+      body: 'Seat s3, 3-4 PM. Check in within 15 minutes of the start or the slot is released.', createdAt: DateTime.now(),
+    );
+
+    /// My Bookings open: the bookings read, and (unless [readNotices] is false) the notices too.
+    Future<(ProviderContainer, _CountingNotices)> open({BookingRepository? bookings, bool readNotices = true}) async {
+      final notices = _CountingNotices(notices: [reminder]);
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: bookings, notices: notices));
+      addTearDown(container.dispose);
+      await container.read(bookingsControllerProvider.future);
+      if (readNotices) await container.read(noticesControllerProvider.future);
+      return (container, notices);
+    }
+
+    List<String> shown(ProviderContainer container) => [for (final n in container.read(noticesControllerProvider).value!) n.id];
+
+    for (final write in <(String, Future<void> Function(BookingsController))>[
+      ('check-in', (c) => c.checkIn('bk2')),
+      ('cancel', (c) => c.cancel('bk1')),
+    ]) {
+      test('a successful ${write.$1} reads the notices again, so the reminder the library hid is gone', () async {
+        final (container, notices) = await open();
+        expect(notices.fetches, 1);
+        expect(shown(container), ['r1']);
+        notices.notices = []; // the library hides the reminder once the booking is checked in or cancelled
+
+        await write.$2(container.read(bookingsControllerProvider.notifier));
+        await pumpEventQueue(); // the read is not waited for
+
+        expect(notices.fetches, 2);
+        expect(shown(container), isEmpty);
+      });
+
+      test('a refused ${write.$1} leaves the notices alone', () async {
+        final (container, notices) = await open(bookings: _RefusingBookingRepository());
+        notices.notices = [];
+
+        await expectLater(write.$2(container.read(bookingsControllerProvider.notifier)), throwsA(isA<ConflictException>()));
+        await pumpEventQueue();
+
+        expect(notices.fetches, 1);
+        expect(shown(container), ['r1']);
+      });
+
+      test('a ${write.$1} while the notices were never read still works, and starts no read of them', () async {
+        final (container, notices) = await open(readNotices: false);
+        expect(container.exists(noticesControllerProvider), false);
+
+        await write.$2(container.read(bookingsControllerProvider.notifier));
+        await pumpEventQueue();
+
+        expect(container.exists(noticesControllerProvider), false);
+        expect(notices.fetches, 0);
+        expect(container.read(bookingsControllerProvider).hasError, false);
+      });
+    }
   });
 
   group('reportProblem', () {
@@ -302,12 +418,165 @@ void main() {
     });
   });
 
+  group('disputeNoShow', () {
+    Future<(ProviderContainer, _ScriptedBookings)> loaded(List<ResourceBooking> bookings) async {
+      final repo = _ScriptedBookings(bookings);
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+      addTearDown(container.dispose);
+      await container.read(bookingsControllerProvider.future);
+      return (container, repo);
+    }
+
+    test('sends the booking and the reason, then reads the list again', () async {
+      final (container, repo) = await loaded([_missed('b1'), _missed('b2', resourceId: 's4')]);
+      repo.onDispute = (id) => repo.served = repo.disputedList(id);
+      expect(repo.fetches, 1);
+
+      await container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'The scanner was down.');
+
+      expect(repo.disputes, [('b1', 'The scanner was down.')]);
+      expect(repo.fetches, 2); // the load, and the read after the dispute
+      final state = container.read(bookingsControllerProvider);
+      expect(state.isLoading, false);
+      expect(statusesOf(container), [NoShowDisputeStatus.open, null]); // only the disputed booking
+      expect(state.value!.map((b) => b.noShow!.canDispute), [false, true]);
+      expect(state.value!.map((b) => b.status), [BookingStatus.released, BookingStatus.released]); // a dispute leaves the status alone
+    });
+
+    test('a fetch begun before the dispute cannot leave the card without "Under review"', () async {
+      final (container, repo) = await loaded([_missed('b1')]);
+      final notifier = container.read(bookingsControllerProvider.notifier);
+
+      // A quiet refresh is on the wire, and will answer with what the server knew before the dispute...
+      repo.gate = Completer<void>();
+      final staleGate = repo.gate!;
+      final stale = notifier.refreshQuietly();
+      repo.gate = null;
+      // ...when the dispute is written, and the server now has it.
+      repo.onDispute = (id) => repo.served = repo.disputedList(id);
+      var done = false;
+      final dispute = notifier.disputeNoShow('b1', 'I was there.').then((_) => done = true);
+      await Future<void>.delayed(Duration.zero);
+      expect(done, false); // waiting for the fetch that began before the write
+
+      staleGate.complete();
+      await stale;
+      await dispute;
+
+      expect(statusesOf(container), [NoShowDisputeStatus.open]);
+      expect(container.read(bookingsControllerProvider).value!.single.noShow!.canDispute, false);
+    });
+
+    test('the booking reads "Under review" at once, from the dispute itself, even if reading the list again fails', () async {
+      final (container, repo) = await loaded([_missed('b1'), _missed('b2', resourceId: 's4')]);
+      // The server records it, and then the network drops before the list is read again.
+      repo.onDispute = (_) => repo.offline = true;
+
+      await container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.');
+
+      final state = container.read(bookingsControllerProvider);
+      expect(state.hasError, false);
+      expect(statusesOf(container), [NoShowDisputeStatus.open, null]); // only the disputed booking
+      expect(state.value!.map((b) => b.noShow!.canDispute), [false, true]);
+    });
+
+    test('the mark is in place before the list is read again, not only after', () async {
+      final (container, repo) = await loaded([_missed('b1')]);
+      repo.onDispute = (id) => repo.served = repo.disputedList(id);
+      final seen = <NoShowDisputeStatus?>[];
+      container.listen(bookingsControllerProvider, (_, next) => seen.add(next.value?.single.noShow?.dispute?.status));
+      repo.gate = Completer<void>(); // the read after the dispute is held back
+
+      final dispute = container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.');
+      await pumpEventQueue();
+
+      expect(statusesOf(container), [NoShowDisputeStatus.open]);
+      expect(seen, [NoShowDisputeStatus.open]);
+
+      repo.gate!.complete();
+      await dispute;
+      expect(statusesOf(container), [NoShowDisputeStatus.open]);
+    });
+
+    for (final refusal in [
+      const ConflictException('The 7 days to dispute this no-show have passed.'),
+      const ConflictException("You've already disputed this no-show."),
+      const ApiException(404, 'Booking not found'),
+    ]) {
+      test('a ${refusal.statusCode} refusal ("${refusal.message}") reads the list again and tells the caller why', () async {
+        final (container, repo) = await loaded([_missed('b1')]);
+        // The picture was out of date: the window closed, or another device disputed it.
+        final alreadyDisputed = refusal.message.contains('already');
+        repo.onDispute = (id) {
+          repo.served = alreadyDisputed
+              ? repo.disputedList(id)
+              : [_missed(id, noShow: const NoShowInfo(canDispute: false))];
+          throw refusal;
+        };
+
+        await expectLater(
+          container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.'),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message', refusal.message)),
+        );
+
+        expect(repo.fetches, 2);
+        final state = container.read(bookingsControllerProvider);
+        expect(state.hasError, false);
+        // What the card shows now is the server's answer, not a mark of ours.
+        expect(statusesOf(container), [alreadyDisputed ? NoShowDisputeStatus.open : null]);
+        expect(state.value!.single.noShow!.canDispute, false);
+      });
+    }
+
+    test('a refusal never gets the local mark, even when reading the list again fails', () async {
+      final (container, repo) = await loaded([_missed('b1')]);
+      repo.onDispute = (_) {
+        repo.offline = true;
+        throw const ConflictException('The 7 days to dispute this no-show have passed.');
+      };
+
+      await expectLater(
+        container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.'),
+        throwsA(isA<ConflictException>()),
+      );
+
+      // Still the list the student held: no "Under review" for a dispute the server refused.
+      expect(statusesOf(container), [null]);
+      expect(container.read(bookingsControllerProvider).value!.single.noShow!.canDispute, true);
+    });
+
+    test('a network failure tells the caller and does not read the list again, nor mark it', () async {
+      final (container, repo) = await loaded([_missed('b1')]);
+      repo.onDispute = (_) => throw const ApiException(0, ApiException.networkMessage);
+
+      await expectLater(
+        container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.'),
+        throwsA(isA<ApiException>().having((e) => e.isNetworkError, 'isNetworkError', true)),
+      );
+
+      expect(repo.fetches, 1);
+      expect(statusesOf(container), [null]);
+      expect(container.read(bookingsControllerProvider).value!.single.noShow!.canDispute, true);
+    });
+
+    test("the one-second tick keeps the mark (it recomputes statuses, not a no-show's dispute)", () async {
+      final (container, repo) = await loaded([_missed('b1')]);
+      repo.onDispute = (_) => repo.offline = true; // so only the local mark carries the dispute
+      await container.read(bookingsControllerProvider.notifier).disputeNoShow('b1', 'I was there.');
+
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+
+      expect(statusesOf(container), [NoShowDisputeStatus.open]);
+      expect(container.read(bookingsControllerProvider).value!.single.status, BookingStatus.released);
+    });
+  });
+
   group('when a different student logs in', () {
     // Student A is logged in and has read their bookings; the next to log in is B.
-    Future<(ProviderContainer, _ScriptedBookings, AuthController)> asStudentA() async {
+    Future<(ProviderContainer, _ScriptedBookings, AuthController)> asStudentA({NoticeRepository? notices}) async {
       final repo = _ScriptedBookings([_seat('A-booking', resourceId: 'sA', reportOpen: true, canReport: false)]);
       // Riverpod retries a failed fetch for about 40 seconds; the test of a fetch that failed for good turns that off.
-      final container = ProviderContainer(retry: (_, __) => null, overrides: mockRepositoryOverrides(bookings: repo));
+      final container = ProviderContainer(retry: (_, __) => null, overrides: mockRepositoryOverrides(bookings: repo, notices: notices));
       addTearDown(container.dispose);
       final auth = container.read(authControllerProvider.notifier);
       await auth.login('aditi.sharma@thapar.edu', 'anything');
@@ -435,6 +704,39 @@ void main() {
       expect(container.read(bookingsControllerProvider).value!.single.id, 'B-booking');
     });
 
+    // The notices are B's now (their reminder is not A's to refresh), so A's answer must not read them.
+    for (final write in <(String, Future<void> Function(BookingsController))>[
+      ('cancel', (c) => c.cancel('A-booking')),
+      ('check-in', (c) => c.checkIn('A-booking')),
+    ]) {
+      test("A's ${write.$1} answering after B logged in does not read the notices again", () async {
+        final notices = _CountingNotices();
+        final (container, repo, auth) = await asStudentA(notices: notices);
+        container.listen(bookingsControllerProvider, (_, __) {});
+        container.listen(noticesControllerProvider, (_, __) {});
+        await container.read(noticesControllerProvider.future);
+        final notifier = container.read(bookingsControllerProvider.notifier);
+
+        // A's write is being sent (the server will accept it)...
+        repo.writeGate = Completer<void>();
+        final release = repo.writeGate!;
+        final aWrites = write.$2(notifier);
+        // ...when A logs out and B logs in, and B's bookings and notices are read.
+        repo.writeGate = null;
+        repo.served = [_seat('B-booking', resourceId: 'sB')];
+        await switchToB(auth);
+        await container.read(bookingsControllerProvider.future);
+        await container.read(noticesControllerProvider.future);
+        final fetchesBefore = notices.fetches;
+
+        release.complete();
+        await aWrites;
+        await pumpEventQueue();
+
+        expect(notices.fetches, fetchesBefore);
+      });
+    }
+
     test('within one student a cancel still removes the booking and a check-in still updates it', () async {
       final (container, repo, _) = await asStudentA();
       repo.served = [
@@ -510,6 +812,112 @@ void main() {
       final state = container.read(bookingsControllerProvider);
       expect(state.hasError, true);
       expect(state.isLoading, false);
+    });
+
+    group("A's no-show dispute", () {
+      // A's list holds the no-show they are disputing; B's, once they log in, holds a booking with
+      // the same id (to show the mark is dropped, not just missed) that B may still dispute.
+      Future<(ProviderContainer, _ScriptedBookings, AuthController)> asStudentAWithANoShow() async {
+        final (container, repo, auth) = await asStudentA();
+        repo.served = [_missed('shared-id', resourceId: 'sA')];
+        await container.read(bookingsControllerProvider.notifier).refreshQuietly();
+        expect(container.read(bookingsControllerProvider).value!.single.noShow!.canDispute, true);
+        return (container, repo, auth);
+      }
+
+      test("still on the wire when B logs in does not mark B's bookings, nor read them for A", () async {
+        final (container, repo, auth) = await asStudentAWithANoShow();
+        container.listen(bookingsControllerProvider, (_, __) {});
+        final notifier = container.read(bookingsControllerProvider.notifier);
+
+        // A's dispute is being sent (the server will accept it)...
+        repo.disputeGate = Completer<void>();
+        final release = repo.disputeGate!;
+        final aDisputes = notifier.disputeNoShow('shared-id', 'I was there.');
+        // ...when A logs out and B logs in.
+        repo.disputeGate = null;
+        repo.served = [_missed('shared-id', resourceId: 'sB')];
+        await switchToB(auth);
+        expect((await container.read(bookingsControllerProvider.future)).single.resourceId, 'sB');
+        final fetchesBefore = repo.fetches;
+
+        release.complete();
+        await aDisputes;
+
+        final booking = container.read(bookingsControllerProvider).value!.single;
+        expect(booking.resourceId, 'sB');
+        expect(booking.noShow!.dispute, isNull); // B never disputed it
+        expect(booking.noShow!.canDispute, true); // and may
+        expect(repo.fetches, fetchesBefore); // nothing was read on A's behalf
+      });
+
+      test("answering after B logged in leaves B's pending list alone", () async {
+        final (container, repo, auth) = await asStudentAWithANoShow();
+        container.listen(bookingsControllerProvider, (_, __) {});
+        final notifier = container.read(bookingsControllerProvider.notifier);
+
+        // A's dispute is being sent...
+        repo.disputeGate = Completer<void>();
+        final release = repo.disputeGate!;
+        final aDisputes = notifier.disputeNoShow('shared-id', 'I was there.');
+        // ...when A logs out and B logs in, whose own fetch is still on its way.
+        repo.disputeGate = null;
+        repo.gate = Completer<void>();
+        final bGate = repo.gate!;
+        repo.served = [_missed('shared-id', resourceId: 'sB')];
+        await switchToB(auth);
+        expect(container.read(bookingsControllerProvider).isReloading, true); // A's list rides on the loading state
+
+        release.complete();
+        await aDisputes;
+
+        // Still loading B's list: A's answer wrote nothing, so A's no-show cannot be drawn, marked, as data.
+        final during = container.read(bookingsControllerProvider);
+        expect(during.isLoading, true);
+        expect(during.isReloading, true);
+
+        bGate.complete();
+        final arrived = await container.read(bookingsControllerProvider.future);
+        expect(arrived.single.resourceId, 'sB');
+        final state = container.read(bookingsControllerProvider);
+        expect(state.isLoading, false);
+        expect(state.value!.single.noShow!.dispute, isNull);
+        expect(state.value!.single.noShow!.canDispute, true);
+      });
+
+      test("refused after B logged in is still heard by A, and does not reload B's list", () async {
+        final (container, repo, auth) = await asStudentAWithANoShow();
+        container.listen(bookingsControllerProvider, (_, __) {});
+        final notifier = container.read(bookingsControllerProvider.notifier);
+
+        repo.disputeGate = Completer<void>();
+        final release = repo.disputeGate!;
+        repo.onDispute = (_) => throw const ConflictException('The 7 days to dispute this no-show have passed.');
+        final aDisputes = notifier.disputeNoShow('shared-id', 'I was there.');
+        repo.disputeGate = null;
+        repo.served = [_missed('shared-id', resourceId: 'sB')];
+        await switchToB(auth);
+        await container.read(bookingsControllerProvider.future);
+        final fetchesBefore = repo.fetches;
+
+        release.complete();
+        await expectLater(aDisputes, throwsA(isA<ConflictException>())); // A still hears why
+
+        await pumpEventQueue();
+        expect(repo.fetches, fetchesBefore); // but A's stale answer does not make B's list load again
+        final booking = container.read(bookingsControllerProvider).value!.single;
+        expect(booking.resourceId, 'sB');
+        expect(booking.noShow!.canDispute, true);
+      });
+
+      test("within one student the dispute still marks the booking and reads the list", () async {
+        final (container, repo, _) = await asStudentAWithANoShow();
+        repo.onDispute = (id) => repo.served = repo.disputedList(id);
+
+        await container.read(bookingsControllerProvider.notifier).disputeNoShow('shared-id', 'I was there.');
+
+        expect(statusesOf(container), [NoShowDisputeStatus.open]);
+      });
     });
   });
 }

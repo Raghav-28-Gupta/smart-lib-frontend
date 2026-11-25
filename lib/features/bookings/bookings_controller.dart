@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_exception.dart';
 import '../../models/resource_booking.dart';
 import '../auth/auth_controller.dart';
+import '../notices/notices_controller.dart';
 import 'booking_repository.dart';
 
 class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
   // Bumped by every build(). This notifier outlives a rebuild (a different student
   // logging in), so a quiet refresh begun for the last student must neither land in
   // the next student's state nor be joined by their `refreshQuietly`: the list now
-  // carries each student's own report state (`canReport`, `reportOpen`).
+  // carries each student's own report and no-show state (`canReport`, `reportOpen`, `noShow`).
   int _generation = 0;
 
   @override
@@ -43,8 +44,8 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
   // A check-in or a cancel is a write the student waits for. If a different student has
   // logged in by the time it answers ([generation] was taken before the request), its
   // answer is the last student's: Riverpod still holds their list on the next student's
-  // loading state, so writing it back would show their bookings, with their report
-  // buttons (`canReport`, `reportOpen`), until the next student's own fetch lands. The
+  // loading state, so writing it back would show their bookings, with their report and
+  // dispute buttons (`canReport`, `reportOpen`, `noShow`), until the next student's own fetch lands. The
   // caller still hears of a refusal, but it no longer reloads a list that is not theirs.
 
   Future<void> checkIn(String id) async {
@@ -59,6 +60,7 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
     if (generation != _generation) return;
     final current = state.value ?? [];
     state = AsyncValue.data([for (final b in current) if (b.id == id) updated else b]);
+    _refreshNotices();
   }
 
   Future<void> cancel(String id) async {
@@ -72,6 +74,20 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
     if (generation != _generation) return;
     final current = state.value ?? [];
     state = AsyncValue.data(current.where((b) => b.id != id).toList());
+    _refreshNotices();
+  }
+
+  /// A booking's reminder ("Check in within 15 minutes ...") is hidden by the library as
+  /// soon as the booking is checked in or cancelled, so the notices are read again at
+  /// once, and the reminder does not stay beside a card that no longer needs it. Not
+  /// awaited, so the write's own result doesn't wait on it (`refreshQuietly` never
+  /// throws, and keeps the notices on a network error). Skipped when the notices were
+  /// never read: My Bookings loads them when it opens. Only called for a write that went
+  /// through and is still this student's (the [_generation] check before it).
+  void _refreshNotices() {
+    if (ref.exists(noticesControllerProvider)) {
+      unawaited(ref.read(noticesControllerProvider.notifier).refreshQuietly());
+    }
   }
 
   /// Reports a problem with the seat or room of [b] (`POST /reports`), then reads the
@@ -91,23 +107,50 @@ class BookingsController extends AsyncNotifier<List<ResourceBooking>> {
     await _readAfterWrite(generation, reportedResourceId: b.resourceId);
   }
 
+  /// Sends the student's dispute of the no-show [bookingId] (`POST /bookings/:id/dispute`),
+  /// marks that booking disputed at once ("Under review"), then reads the list again, so
+  /// the card ends up showing the server's own answer. A refusal is rethrown for the caller
+  /// to show, and never marks the booking. A 409 or 404 (the 7 days passed, it was already
+  /// disputed from another device, or it is no longer a no-show) means the picture was out
+  /// of date, so the list is re-read then too; a network error leaves it as it is.
+  Future<void> disputeNoShow(String bookingId, String reason) async {
+    final generation = _generation;
+    try {
+      await ref.read(bookingRepositoryProvider).disputeNoShow(bookingId, reason);
+    } on ApiException catch (e) {
+      if (e.meansStaleState) await _readAfterWrite(generation);
+      rethrow;
+    }
+    await _readAfterWrite(generation, disputedBookingId: bookingId);
+  }
+
+  /// A dispute the server accepted, as the booking reads from then on: the one dispute is
+  /// spent (no button), and it waits for a librarian.
+  static const _disputeOpened = NoShowInfo(canDispute: false, dispute: NoShowDisputeInfo(status: NoShowDisputeStatus.open));
+
   /// Brings the list up to date after a write. A fetch already in flight was begun
   /// before the write, so it may answer without it: it is waited for first, so that its
   /// answer cannot land after, and the list is read again. When the write was a report
   /// that went through, every booking on that resource is marked reported at once, as
-  /// the server answers for it, so the card says so even if the re-read fails. Nothing
+  /// the server answers for it, so the card says so even if the re-read fails; a no-show
+  /// dispute that went through marks that booking disputed the same way. Nothing
   /// is done once a different student has logged in since the write began ([generation]):
   /// the list is theirs by then.
-  Future<void> _readAfterWrite(int generation, {String? reportedResourceId}) async {
+  Future<void> _readAfterWrite(int generation, {String? reportedResourceId, String? disputedBookingId}) async {
     final inFlight = _refreshing;
     if (inFlight != null) await inFlight;
     if (generation != _generation) return;
-    if (reportedResourceId != null) {
+    if (reportedResourceId != null || disputedBookingId != null) {
       final current = state.value;
       if (current != null && !state.hasError && !state.isLoading) {
         state = AsyncValue.data([
           for (final b in current)
-            b.resourceId == reportedResourceId ? b.copyWith(reportOpen: true, canReport: false) : b,
+            if (reportedResourceId != null && b.resourceId == reportedResourceId)
+              b.copyWith(reportOpen: true, canReport: false)
+            else if (disputedBookingId != null && b.id == disputedBookingId)
+              b.copyWith(noShow: _disputeOpened)
+            else
+              b,
         ]);
       }
     }

@@ -2,7 +2,7 @@
 
 The SmartLib student app for **Web, Android, and Windows Desktop**: catalog and
 borrowing, waitlist, loans, fines (and disputing them), library notices, seat/room
-booking with check-in, problem reports, reliability, and recommendations. It talks
+booking with check-in, problem reports, no-show disputes, reliability, and recommendations. It talks
 only to the Node backend (`../backend`, port 3000).
 Librarian/admin tools are a separate planned web console, not part of this app.
 
@@ -253,6 +253,57 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   writes nothing (Riverpod still holds the last student's list on the next one's loading
   state, which the local update would have put back as data), and a refusal of it no
   longer reloads the next student's list. The outcome of the report arrives as a library notice.
+- **A missed booking is a no-show, disputed from My Bookings** (the backend's no-show
+  handling; `POST /bookings/:id/dispute`). **`BookingStatus` is unchanged: a recorded
+  no-show still arrives as `frontendStatus: 'released'`** (a new value would decode to
+  `unknown` and show "Update the app to see this item's status." in every installed
+  app), and `ResourceBooking.noShow` (`NoShowInfo { canDispute, NoShowDisputeInfo?
+  dispute }`; `NoShowDisputeInfo { NoShowDisputeStatus status, String? note }`;
+  `NoShowDisputeStatus { open, overturned, upheld, unknown }` with
+  `unknownEnumValue`) tells it from a plain release: null for every other booking and
+  for an older server, non-null for a no-show or a booking carrying a dispute (an
+  overturned booking is `released` again and keeps it). The app never works
+  `canDispute` out (the server's 7 days from the grace end, no dispute yet); the field
+  goes through `copyWith`. `_releasedLines` (`bookings_screen.dart`) draws it: no
+  `noShow` keeps "This booking was released after the grace period."; otherwise
+  "Missed. A no-show was recorded." with a **Dispute** button when `canDispute` (its
+  screen-reader label names the resource, "Dispute the no-show for Seat A1"); once
+  disputed the button never returns and an open (or unknown) dispute adds "Under
+  review", an upheld one "No-show stands", an overturned one replaces both lines with
+  "No-show removed", and the librarian's note, when there is one, is its own line. The
+  **Dispute** dialog (`_NoShowDisputeDialog`, "Dispute this no-show", "Why do you think
+  this no-show is wrong?") is the fine dispute dialog line for line: the shared
+  `NoteField` (UTF-16 count, at most 300), Send off until there is text and while in
+  flight, a refusal keeps the dialog and the typed text. The write is
+  `BookingsController.disputeNoShow` (repository `disputeNoShow(bookingId, reason)`,
+  through `guardApi`) under `UiController.attempt` with the toast "Dispute sent.". It
+  mirrors the report write: it waits for a fetch in flight, marks that booking
+  disputed itself on success (so "Under review" survives a failed re-read), re-reads,
+  re-reads after a 409/404 but not a network error, never marks the booking on a
+  refusal, and does nothing once a different student has logged in (`_generation`).
+  `MockBookingRepository` takes optional `bookings:` and refuses like the server (404
+  for a booking that is not the student's; 409 for one already disputed, not a no-show
+  or past the 7 days), records accepted disputes in `noShowDisputes`, and `disputeError`
+  makes it throw.
+- **Booking notices are on My Bookings, loan notices on My Loans.** `NoticeKind` gains
+  `bookingReminder`, `noShow` and `noShowOutcome` (`booking_reminder`, `no_show`,
+  `no_show_outcome`). `NoticesSection` (`notices_section.dart`) takes a required
+  `kinds` set: `bookingNoticeKinds` (those three) at the top of My Bookings' list and
+  `loanNoticeKinds` on My Loans, which is COMPUTED as every other kind
+  (`{...NoticeKind.values}.difference(bookingNoticeKinds)`), so `unknown` and any kind
+  added later land on My Loans and cannot vanish from both (a test asserts the two
+  sets partition the enum). A section with none of its kinds renders nothing, and My
+  Loans' empty state counts only the loan kinds. Both read the one per-user
+  `NoticesController`. My Bookings makes one quiet `refreshQuietly()` on notices after
+  its first frame (`_refreshOnOpen`, skipped while they load) and on every
+  `PendingRefresh` tick, which is active only while a room request waits; polling is
+  deliberately not widened for ordinary bookings (slice 5's rule), so a "starts soon"
+  reminder written while the student sits on an ordinary booking shows on the next
+  open. An empty bookings list shows no notices (a booking notice is about a booking
+  the server still lists, and a reminder is hidden once its booking is cancelled). The text is
+  the server's, never rebuilt in the app. A SUCCESSFUL check-in or cancel on My Bookings also
+  makes one quiet notices refresh (the server may have just written a notice or hidden a
+  reminder); a refusal or a stale answer makes none.
 - **Toasts are mounted at the app root** (`MaterialApp.router(builder: withToasts)`)
   so pushed routes such as book detail and the booking flow can show them.
   `ConfirmDialogHost` lives in the tab shell.
@@ -271,7 +322,7 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
 - Nullable backend strings that are non-null in Dart get `@JsonKey(defaultValue: '')`.
   Never write `as double` for JSON numbers; integers arrive as `int`.
 - **The backend only adds response fields, so an older app ignores them** (a fine's
-  `dispute`, a booking's `canReport` and `reportOpen`; an older app simply never asks
+  `dispute`, a booking's `canReport`, `reportOpen` and `noShow`; an older app simply never asks
   for `/notices/me`, and email reaches every student whatever app they run). The
   models in turn read each new field as nullable or with a `@JsonKey(defaultValue:
   ...)`, so an older server's payload still parses (the booking's `resourceId`, which
@@ -306,7 +357,15 @@ flutter run -d chrome --web-port 8080 | -d windows | -d <android-device>
   After the booking captures (`bookings_me_library` is the last of them) the student
   reports the desk they checked into, `s3` (`bookings_me_reported`: every booking on it
   reads `reportOpen` and none `canReport`), so no list captured before it holds an open
-  report.
+  report. The last steps use the no-show the seed gives the demo student: the list
+  before (`bookings_me_no_show`) and after (`bookings_me_no_show_disputed`) her dispute,
+  then an admin overturns it (found through `GET /admin/attention`, `kind`
+  `no_show_dispute`), which writes the notice saved with the earlier ones as
+  `notices_me_no_show_outcome`. Every list captured from `GET /bookings/me` also holds
+  that seeded no-show as a `released` booking with `noShow`, and no OTHER booking may be
+  disputable. Availability depends on the time of day (a seeded "taken" booking already
+  over is a no-show and holds no slot): re-capture earlier in the day if `r2` comes
+  back with no taken slots.
 - HTTP repository tests use `StubHttpAdapter` (`test/support/stub_http_adapter.dart`).
   Don't add `http_mock_adapter`.
 - **The splash screen must stay static.** No spinner or repeating animation:

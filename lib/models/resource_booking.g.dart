@@ -6,6 +6,27 @@ part of 'resource_booking.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+NoShowDisputeInfo _$NoShowDisputeInfoFromJson(Map<String, dynamic> json) =>
+    NoShowDisputeInfo(
+      status: $enumDecode(_$NoShowDisputeStatusEnumMap, json['status'],
+          unknownValue: NoShowDisputeStatus.unknown),
+      note: json['note'] as String?,
+    );
+
+const _$NoShowDisputeStatusEnumMap = {
+  NoShowDisputeStatus.open: 'open',
+  NoShowDisputeStatus.overturned: 'overturned',
+  NoShowDisputeStatus.upheld: 'upheld',
+  NoShowDisputeStatus.unknown: 'unknown',
+};
+
+NoShowInfo _$NoShowInfoFromJson(Map<String, dynamic> json) => NoShowInfo(
+      canDispute: json['canDispute'] as bool? ?? false,
+      dispute: json['dispute'] == null
+          ? null
+          : NoShowDisputeInfo.fromJson(json['dispute'] as Map<String, dynamic>),
+    );
+
 ResourceBooking _$ResourceBookingFromJson(Map<String, dynamic> json) =>
     ResourceBooking(
       id: json['id'] as String,
@@ -24,6 +45,9 @@ ResourceBooking _$ResourceBookingFromJson(Map<String, dynamic> json) =>
       resourceId: json['resourceId'] as String? ?? '',
       canReport: json['canReport'] as bool? ?? false,
       reportOpen: json['reportOpen'] as bool? ?? false,
+      noShow: json['noShow'] == null
+          ? null
+          : NoShowInfo.fromJson(json['noShow'] as Map<String, dynamic>),
     );
 
 const _$ResourceTypeEnumMap = {

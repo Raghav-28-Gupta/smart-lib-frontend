@@ -15,12 +15,18 @@ enum NoticeKind {
   disputeOutcome,
   @JsonValue('report_outcome')
   reportOutcome,
+  @JsonValue('booking_reminder')
+  bookingReminder,
+  @JsonValue('no_show')
+  noShow,
+  @JsonValue('no_show_outcome')
+  noShowOutcome,
   unknown,
 }
 
 /// One message from the library to the student, from GET /notices/me: an overdue
-/// reminder, or the outcome of a dispute or a report. The server's text is shown
-/// as written.
+/// reminder, a booking's reminder or recorded no-show, or the outcome of a dispute
+/// or a report. The server's text is shown as written.
 @JsonSerializable(createToJson: false)
 class Notice {
   const Notice({

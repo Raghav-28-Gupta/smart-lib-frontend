@@ -1112,6 +1112,92 @@ void main() {
     });
   });
 
+  group('booking notices stay on My Bookings', () {
+    // A reminder, a recorded no-show and the answer to a dispute of one belong to a booking:
+    // My Bookings shows them, and My Loans keeps the loan and fine kinds (and any kind this
+    // version does not know).
+    final bookingNotices = [
+      _notice('b1', kind: NoticeKind.bookingReminder, title: 'Your booking starts soon', body: 'Group Room 201, 2–3 PM. Check in within 15 minutes of the start or the slot is released.'),
+      _notice('b2', kind: NoticeKind.noShow, title: 'Missed booking', body: "You didn't check in to Seat A1 (Thu, Oct 22, 2–3 PM), so the slot was released and a no-show was recorded."),
+      _notice('b3', kind: NoticeKind.noShowOutcome, title: 'No-show removed', body: 'The library removed the no-show for Seat A1 (Thu, Oct 22) and restored your reliability score to 100.'),
+    ];
+
+    void expectNoBookingNotices() {
+      expect(find.text('Your booking starts soon'), findsNothing);
+      expect(find.textContaining('Group Room 201, 2–3 PM'), findsNothing);
+      expect(find.text('Missed booking'), findsNothing);
+      expect(find.textContaining("You didn't check in to Seat A1"), findsNothing);
+      expect(find.text('No-show removed'), findsNothing);
+      expect(find.textContaining('The library removed the no-show for Seat A1'), findsNothing);
+    }
+
+    testWidgets('My Bookings shows only booking notices and My Loans never shows them', (tester) async {
+      await _pumpLoans(tester, notices: MockNoticeRepository(notices: [
+        bookingNotices[0],
+        _notice('n1', kind: NoticeKind.overdueEscalation, title: 'Formal overdue notice', body: 'Operating System Concepts is now 5 days overdue.'),
+        bookingNotices[1],
+        _notice('n2', kind: NoticeKind.disputeOutcome, title: 'Your fine stands', body: 'The library kept your ₹30 fine for Sapiens.'),
+        bookingNotices[2],
+        _notice('n3', kind: NoticeKind.reportOutcome, title: 'Thanks for the report', body: 'Thanks for reporting a problem with Sapiens.'),
+        _notice('n4'),
+      ]));
+
+      // The loan and fine kinds stay, under one heading.
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+      expect(find.text('Your fine stands'), findsOneWidget);
+      expect(find.text('Thanks for the report'), findsOneWidget);
+      expect(find.text('Overdue book reminder'), findsOneWidget);
+      // The three booking kinds are not here.
+      expectNoBookingNotices();
+    });
+
+    testWidgets('an unknown kind still shows on My Loans, beside the booking notices it does not show', (tester) async {
+      await _pumpLoans(tester, notices: MockNoticeRepository(notices: [
+        bookingNotices[1],
+        _notice('n1', kind: NoticeKind.unknown, title: 'A new sort of notice', body: 'Something the library wants you to read.'),
+        bookingNotices[0],
+      ]));
+
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('A new sort of notice'), findsOneWidget);
+      expect(find.text('Something the library wants you to read.'), findsOneWidget);
+      expectNoBookingNotices();
+    });
+
+    testWidgets('an empty list shows no section, and booking notices alone leave none', (tester) async {
+      await _pumpLoans(tester);
+      expect(find.text('Library notices'), findsNothing);
+
+      // Booking notices only: nothing of this screen's kinds, so no heading and no cards.
+      await tester.pumpWidget(const SizedBox());
+      await _pumpLoans(tester, notices: MockNoticeRepository(notices: bookingNotices));
+      expect(find.text('Library notices'), findsNothing);
+      expectNoBookingNotices();
+      expect(find.text('On loan'), findsOneWidget);
+    });
+
+    testWidgets('a student whose only notices are booking notices still gets the empty state on My Loans', (tester) async {
+      await _pumpLoans(tester, loans: _NoLoans(), notices: MockNoticeRepository(notices: bookingNotices));
+
+      expect(find.text('No active loans'), findsOneWidget);
+      expect(find.text('Library notices'), findsNothing);
+      expectNoBookingNotices();
+    });
+
+    testWidgets('a loan notice beside booking notices still keeps the empty state away', (tester) async {
+      await _pumpLoans(tester, loans: _NoLoans(), notices: MockNoticeRepository(notices: [
+        ...bookingNotices,
+        _notice('n1', kind: NoticeKind.reportOutcome, title: 'Thanks for the report', body: 'Thanks for reporting a problem with Sapiens.'),
+      ]));
+
+      expect(find.text('No active loans'), findsNothing);
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Thanks for the report'), findsOneWidget);
+      expectNoBookingNotices();
+    });
+  });
+
   group('a late loan returned or renewed from My Loans', () {
     // The loan3 row is the overdue one, third in the list.
     Finder overdueLoan(Type button, String label) => find.widgetWithText(button, label).at(2);
@@ -1443,6 +1529,39 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       expect(find.text('Library notices'), findsNothing);
       expect(find.text('Formal overdue notice'), findsNothing);
+    });
+
+    testWidgets("an account switch never shows the previous student's notices on My Loans, and never a booking notice", (tester) async {
+      final notices = _GatedNotices()
+        ..served = [
+          _notice('a1', title: 'Formal overdue notice', kind: NoticeKind.overdueEscalation, body: 'Algorithms Unlocked is now 5 days overdue.'),
+          _notice('a2', title: 'Missed booking', kind: NoticeKind.noShow, body: "You didn't check in to Seat A1 (Thu, Oct 22, 2–3 PM)."),
+        ];
+      final container = await openAsFirstStudent(tester, notices: notices);
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Formal overdue notice'), findsOneWidget);
+      expect(find.text('Missed booking'), findsNothing); // a booking notice, for My Bookings
+
+      notices.served = [
+        _notice('b1', title: 'Your fine was waived', kind: NoticeKind.disputeOutcome, body: 'The library waived the ₹30 fine for Sapiens.'),
+        _notice('b2', title: 'Your booking starts soon', kind: NoticeKind.bookingReminder, body: 'Seat B1, 2–3 PM.'),
+      ];
+      notices.gate = Completer<void>();
+      await openAsNextStudent(tester, container);
+
+      // The loans have arrived, so this is the window where the notices have not.
+      expect(find.text('On loan'), findsOneWidget);
+      expect(find.text('Library notices'), findsNothing);
+      expect(find.text('Formal overdue notice'), findsNothing);
+      expect(find.text('Missed booking'), findsNothing);
+
+      notices.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Library notices'), findsOneWidget);
+      expect(find.text('Your fine was waived'), findsOneWidget);
+      expect(find.text('Formal overdue notice'), findsNothing);
+      expect(find.text('Missed booking'), findsNothing);
+      expect(find.text('Your booking starts soon'), findsNothing);
     });
 
     testWidgets("does not show the last student's waitlist or requests when the next student's fetches fail", (tester) async {
