@@ -262,7 +262,7 @@ when you're done, because the steps change the demo data.
 | 11 | Open *Operating System Concepts* (no copies free) → **Join Waitlist**; go back, then open it again | *You're #3 in line.* is still there; My Loans lists it under **Waitlist** | ☐ | ☐ | ☐ |
 | 12 | On that book, **Leave waitlist** | Toast *You've left the waitlist.*; *Join Waitlist* is back | ☐ | ☐ | ☐ |
 | 13 | **Held copy**: on another client, log in as `seed.student1@thapar.edu` (same password), request *The Midnight Library*, and approve it in the console. As Aditi, join its waitlist. Then return it as the other student | Aditi's My Loans shows *Held for you until …* and the book offers **Request to borrow**; the other student sees *Every copy on the shelf is held for a student on the waitlist.* | ☐ | ☐ | ☐ |
-| 14 | Bookings → New → Seats → Tomorrow → pick a slot → Continue → **Confirm booking** | *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
+| 14 | Bookings → New → Seats → Tomorrow → pick a time (each shows how many desks are free), switch zones with the zone chips, tap a free desk on the map → Continue → **Confirm booking** | The map shows the zone's front bar (*WINDOWS*, *ENTRANCE*) and desks in their rows with gaps for the aisles; the bar under it names the desk and the time, e.g. *Reading Room A · Desk 14* and *Tomorrow · 9:00 AM to 10:00 AM*. Then *Booked*; it appears under Bookings with *check-in opens at the start time* | ☐ | ☐ | ☐ |
 | 15 | Bookings → New → Rooms → Tomorrow → pick a slot → Continue → **Send request**; then approve it in the console | *Request sent*; My Bookings shows *Waiting for a librarian · held until …*, then within 30 seconds *check-in opens at the start time* | ☐ | ☐ | ☐ |
 | 16 | **Conflict**: on this platform, get to the confirm screen for a seat and slot. On another platform or browser tab, book that same seat and slot first. Then tap Confirm here | *That slot was just taken* with alternatives; tapping one books it | ☐ | ☐ | ☐ |
 | 17 | **Check in**: between :00 and :15 past the hour (9 AM–7 PM), book today's current slot, open Bookings, tap **Check In**. Then tap **Report a problem** on that card, choose *Other* (**Send** stays off until you write a note), write one, and send | *Enjoy your session.* After sending, the toast reads *Thanks, the library has your report.* and the card shows *Reported* in place of the button | ☐ | ☐ | ☐ |
@@ -322,7 +322,7 @@ lib/
     ├── loans/                 # active loans, renew, return
     ├── fines/                 # the student's fines (the Fines section of My Loans)
     ├── notices/               # library notices (the Library notices section of My Loans and My Bookings)
-    ├── bookings/              # booking flow, conflicts, check-in, time slots
+    ├── bookings/              # booking flow (seats: time strip, zone chips, seat map), conflicts, check-in, time slots
     ├── profile/               # reliability
     ├── recommendations/
     ├── home/

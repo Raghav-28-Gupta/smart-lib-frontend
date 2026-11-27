@@ -178,4 +178,137 @@ void main() {
     await expectLater(notifier.confirm(), throwsA(isA<ApiException>()));
     expect(repo.calls, 2);
   });
+
+  group('time first', () {
+    const desk12 = Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: []);
+
+    test('chooseTime sets the time and clears the desk', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.pickSlot(desk12, '9:00 AM');
+
+      notifier.chooseTime('3:00 PM');
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.selectedSlot, '3:00 PM');
+      expect(state.selectedResource, isNull);
+    });
+
+    test("chooseTime also drops a conflict alternative's exact window", () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final altStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 18, 30);
+      notifier.pickAlternative(BookingAlternative(
+        resourceId: 's3', resourceName: 'Silent Zone · Desk 3', resourceType: ResourceType.seat,
+        startTime: altStart, endTime: altStart.add(const Duration(hours: 1)),
+      ));
+      expect(container.read(bookingFlowControllerProvider).alternativeWindow, isNotNull);
+
+      notifier.chooseTime('3:00 PM');
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.alternativeWindow, isNull);
+      expect(state.selectedResource, isNull);
+    });
+
+    test('chooseZone keeps the time and the desk', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.pickSlot(desk12, '3:00 PM');
+
+      notifier.chooseZone('Silent Zone');
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.selectedZone, 'Silent Zone');
+      expect(state.selectedSlot, '3:00 PM');
+      expect(state.selectedResource, same(desk12));
+    });
+
+    test('setDateIndex clears the time and desk but keeps the zone', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.chooseZone('Silent Zone');
+      notifier.pickSlot(desk12, '3:00 PM');
+
+      notifier.setDateIndex(1);
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.dateIndex, 1);
+      expect(state.selectedSlot, isNull);
+      expect(state.selectedResource, isNull);
+      expect(state.selectedZone, 'Silent Zone');
+    });
+
+    test('backToPicker(clearDesk: true) keeps the time and drops the desk', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.chooseZone('Reading Room A');
+      notifier.pickSlot(desk12, '3:00 PM');
+      notifier.goToConfirm();
+
+      notifier.backToPicker(clearDesk: true);
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.step, BookingFlowStep.pick);
+      expect(state.selectedSlot, '3:00 PM');
+      expect(state.selectedResource, isNull);
+      expect(state.selectedZone, 'Reading Room A');
+    });
+
+    test('backToPicker() without clearDesk keeps the desk, as the Rooms tab relies on', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.pickSlot(desk12, '3:00 PM');
+      notifier.goToConfirm();
+
+      notifier.backToPicker();
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.step, BookingFlowStep.pick);
+      expect(state.selectedSlot, '3:00 PM');
+      expect(state.selectedResource, same(desk12));
+    });
+
+    test('backToPicker(clearDesk: true) after a conflict alternative leaves no stale window to book', () async {
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final altStart = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 18, 30);
+      final repo = _ConflictOnceRepository(BookingAlternative(
+        resourceId: 's3', resourceName: 'Silent Zone · Desk 3', resourceType: ResourceType.seat,
+        startTime: altStart, endTime: altStart.add(const Duration(hours: 1)),
+      ));
+      final container = ProviderContainer(overrides: mockRepositoryOverrides(bookings: repo));
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+
+      notifier.setDateIndex(1);
+      notifier.chooseTime('5:00 PM');
+      notifier.pickSlot(desk12, '5:00 PM');
+      notifier.goToConfirm();
+      await notifier.confirm();
+      notifier.pickAlternative(container.read(bookingFlowControllerProvider).conflictAlternatives!.single);
+      notifier.backToPicker(clearDesk: true);
+
+      final state = container.read(bookingFlowControllerProvider);
+      expect(state.alternativeWindow, isNull);
+      expect(state.selectedResource, isNull);
+    });
+
+    test('setType starts the zone over', () {
+      final container = ProviderContainer(overrides: mockRepositoryOverrides());
+      addTearDown(container.dispose);
+      final notifier = container.read(bookingFlowControllerProvider.notifier);
+      notifier.chooseZone('Silent Zone');
+
+      notifier.setType(ResourceType.room);
+
+      expect(container.read(bookingFlowControllerProvider).selectedZone, isNull);
+    });
+  });
 }

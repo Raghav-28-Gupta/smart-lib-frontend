@@ -2,6 +2,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:smartlib_frontend/core/api_exception.dart';
 import 'package:smartlib_frontend/features/bookings/booking_repository.dart';
+import 'package:smartlib_frontend/features/bookings/time_slots.dart';
 import 'package:smartlib_frontend/models/resource_booking.dart';
 
 void main() {
@@ -22,6 +23,100 @@ void main() {
     final seats = await repo.resources(ResourceType.seat, 0);
     final s1 = seats.firstWhere((r) => r.id == 's1');
     expect(s1.takenSlotsToday, contains('11:00 AM'));
+  });
+
+  group('the demo seat layout', () {
+    test('serves the 128-desk demo layout: s2 is Reading Room A · Desk 14 at row 2, column 5, with front Windows', () async {
+      final seats = await MockBookingRepository().resources(ResourceType.seat, 0);
+      expect(seats, hasLength(128));
+      expect(seats.every((s) => s.type == ResourceType.seat && s.status == ResourceStatus.available && s.isPlaced), true);
+
+      final s2 = seats.singleWhere((s) => s.id == 's2');
+      expect(s2.name, 'Reading Room A · Desk 14');
+      expect(s2.location, 'Reading Room A');
+      expect(s2.row, 2);
+      expect(s2.column, 5);
+      expect(s2.zoneFront, 'Windows');
+
+      // The other kept desks, as the seed places them.
+      Resource seat(String id) => seats.singleWhere((s) => s.id == id);
+      expect((seat('s1').name, seat('s1').row, seat('s1').column), ('Reading Room A · Desk 12', 2, 2));
+      expect((seat('s3').name, seat('s3').row, seat('s3').column, seat('s3').zoneFront), ('Silent Zone · Desk 3', 1, 3, 'Entrance'));
+      expect((seat('s4').name, seat('s4').row, seat('s4').column), ('Silent Zone · Desk 7', 1, 8));
+
+      final reading = seats.where((s) => s.location == 'Reading Room A').toList();
+      final silent = seats.where((s) => s.location == 'Silent Zone').toList();
+      expect(reading, hasLength(80));
+      expect(silent, hasLength(48));
+      expect(reading.every((s) => s.zoneFront == 'Windows'), true);
+      expect(silent.every((s) => s.zoneFront == 'Entrance'), true);
+
+      // The aisles: columns 4 and 9 in Reading Room A, column 5 in Silent Zone, hold no desk.
+      expect(reading.map((s) => s.column).toSet(), {1, 2, 3, 5, 6, 7, 8, 10, 11, 12});
+      expect(reading.map((s) => s.row).toSet(), {1, 2, 3, 4, 5, 6, 7, 8});
+      expect(silent.map((s) => s.column).toSet(), {1, 2, 3, 4, 6, 7, 8, 9});
+      expect(silent.map((s) => s.row).toSet(), {1, 2, 3, 4, 5, 6});
+
+      // Desk N runs row by row over the desk columns; a generated desk's id carries N, and
+      // the kept ones (Desk 12 and 14, Silent Zone Desk 3 and 7) keep theirs.
+      Resource named(String name) => seats.singleWhere((s) => s.name == name);
+      expect((named('Reading Room A · Desk 1').id, named('Reading Room A · Desk 1').row, named('Reading Room A · Desk 1').column), ('s-rra-1', 1, 1));
+      expect((named('Reading Room A · Desk 80').id, named('Reading Room A · Desk 80').row, named('Reading Room A · Desk 80').column), ('s-rra-80', 8, 12));
+      expect((named('Silent Zone · Desk 1').id, named('Silent Zone · Desk 1').row, named('Silent Zone · Desk 1').column), ('s-sz-1', 1, 1));
+      expect((named('Silent Zone · Desk 48').id, named('Silent Zone · Desk 48').row, named('Silent Zone · Desk 48').column), ('s-sz-48', 6, 9));
+      expect(seats.map((s) => s.id).toSet().intersection({'s-rra-12', 's-rra-14', 's-sz-3', 's-sz-7'}), isEmpty);
+    });
+
+    test('today s1 to s4 keep their taken slots, and tomorrow nothing is taken', () async {
+      final repo = MockBookingRepository();
+      final today = await repo.resources(ResourceType.seat, 0);
+      Map<String, List<String>> takenById(List<Resource> seats) => {for (final s in seats) s.id: s.takenSlotsToday};
+
+      expect(takenById(today)['s1'], ['11:00 AM', '12:00 PM']);
+      expect(takenById(today)['s2'], ['9:00 AM', '10:00 AM', '3:00 PM', '4:00 PM']);
+      expect(takenById(today)['s3'], isEmpty);
+      expect(takenById(today)['s4'], ['1:00 PM', '2:00 PM', '6:00 PM']);
+      final others = today.where((s) => !const {'s1', 's2', 's3', 's4'}.contains(s.id));
+      expect(others, hasLength(124));
+      expect(others.every((s) => s.takenSlotsToday.isEmpty), true);
+
+      for (final dateIndex in [1, 2]) {
+        final later = await repo.resources(ResourceType.seat, dateIndex);
+        expect(later, hasLength(128));
+        expect(later.every((s) => s.takenSlotsToday.isEmpty), true, reason: 'day $dateIndex');
+      }
+    });
+
+    test('ids and positions are unique', () async {
+      final seats = await MockBookingRepository().resources(ResourceType.seat, 0);
+      expect(seats.map((s) => s.id).toSet(), hasLength(seats.length));
+      expect(seats.map((s) => s.name).toSet(), hasLength(seats.length));
+      expect(seats.map((s) => (s.location, s.row, s.column)).toSet(), hasLength(seats.length));
+    });
+
+    test('the rooms are unchanged, and are not on any map', () async {
+      final rooms = await MockBookingRepository().resources(ResourceType.room, 0);
+      expect(rooms.map((r) => r.id), ['r1', 'r2', 'r3']);
+      expect(rooms.every((r) => !r.isPlaced && r.status == ResourceStatus.available), true);
+      expect(rooms.singleWhere((r) => r.id == 'r2').takenSlotsToday, kTimeSlots);
+    });
+
+    test('the scripted s1 conflict tomorrow at 5:00 PM still offers s1 at 6:00 PM and s3 at 5:00 PM', () async {
+      final repo = MockBookingRepository();
+      final s1 = (await repo.resources(ResourceType.seat, 1)).singleWhere((s) => s.id == 's1');
+      final start = slotWindow(1, '5:00 PM');
+      try {
+        await repo.createBooking(resource: s1, start: start.start, end: start.end);
+        fail('expected a BookingConflictException');
+      } on BookingConflictException catch (e) {
+        expect(e.alternatives.map((a) => (a.resourceId, a.resourceName)), [
+          ('s1', 'Reading Room A · Desk 12'),
+          ('s3', 'Silent Zone · Desk 3'),
+        ]);
+      }
+      // The conflicting slot now reads taken.
+      expect((await repo.resources(ResourceType.seat, 1)).singleWhere((s) => s.id == 's1').takenSlotsToday, ['5:00 PM']);
+    });
   });
 
   test('checkIn flips a booking to checkedIn', () async {

@@ -9,6 +9,8 @@ import '../../models/resource_booking.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
 import 'booking_flow_controller.dart';
+import 'seat_map.dart';
+import 'seat_picker.dart';
 import 'time_slots.dart';
 
 const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -76,7 +78,24 @@ class BookingFlowScreen extends ConsumerWidget {
       Expanded(child: resourcesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, st) => ErrorState(title: "Couldn't load availability", onRetry: () => ref.invalidate(bookingResourcesProvider)),
-              data: (resources) => resources.isEmpty ? _noneFree(flow.type, notifier) : ListView.builder(
+              data: (resources) => resources.isEmpty
+                  ? _noneFree(flow.type, notifier)
+                  // Seats pick the time first, then a desk on the map; rooms keep the list.
+                  : flow.type == ResourceType.seat
+                      ? SeatPicker(
+                          seats: resources,
+                          dateIndex: flow.dateIndex,
+                          now: now,
+                          selectedSlot: flow.selectedSlot,
+                          selectedZone: flow.selectedZone,
+                          selectedSeat: flow.selectedResource,
+                          onChooseTime: notifier.chooseTime,
+                          onChooseZone: notifier.chooseZone,
+                          onPickSeat: notifier.pickSlot,
+                          onSeeTomorrow: () => notifier.setDateIndex(1),
+                          onShowRooms: () => notifier.setType(ResourceType.room),
+                        )
+                      : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
                 itemCount: resources.length,
                 itemBuilder: (context, i) {
@@ -101,7 +120,10 @@ class BookingFlowScreen extends ConsumerWidget {
                 },
               ),
             )),
-      if (flow.selectedSlot != null)
+      // A time alone is no pick on the Seats tab: its bar waits for a desk.
+      if (flow.type == ResourceType.seat && _seatPickStands(flow, resourcesAsync.value, now))
+        _seatBar(context, flow, notifier)
+      else if (flow.type == ResourceType.room && flow.selectedSlot != null)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Row(children: [
@@ -110,6 +132,66 @@ class BookingFlowScreen extends ConsumerWidget {
           ]),
         ),
     ]);
+  }
+
+  /// Whether the Seats tab's pick can still be booked as the map shows it: made
+  /// at the time the strip shows (not at one that has since passed), on a seat
+  /// that is still free then in the seats as loaded (not one taken or taken out
+  /// of service since, say after "Change slot" and a reload). A conflict
+  /// alternative is booked at the server's own window, so it stands as it was.
+  bool _seatPickStands(BookingFlowState flow, List<Resource>? seats, DateTime now) {
+    final pick = flow.selectedResource;
+    final slot = flow.selectedSlot;
+    if (pick == null || slot == null) return false;
+    if (flow.alternativeWindow != null) return true;
+    if (seats == null || slot != shownSlot(seats, flow.dateIndex, slot, now: now)) return false;
+    final seat = seats.where((s) => s.id == pick.id).firstOrNull;
+    return seat != null && isFreeAt(seat, slot);
+  }
+
+  /// The Seats tab's bar once a desk is picked: "Reading Room A · Desk 14" over
+  /// "Today · 3:00 PM to 4:00 PM", and Continue to the confirm step.
+  Widget _seatBar(BuildContext context, BookingFlowState flow, BookingFlowController notifier) {
+    final theme = Theme.of(context);
+    return Material(
+      key: const Key('seatBar'),
+      color: theme.colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(_deskLine(flow.selectedResource!), style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                Text('${_dateLabel(flow.dateIndex)} · ${_slotRange(flow)}'),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            FilledButton(onPressed: notifier.goToConfirm, child: const Text('Continue')),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// "Reading Room A · Desk 14": the zone and the desk's number, or the seat's
+  /// own name when it has no zone (a seat not on a map, or a conflict
+  /// alternative, which carries no location) or no number ("Window Nook", not
+  /// "Reading Room A · Desk Win").
+  String _deskLine(Resource seat) {
+    final zone = seat.location;
+    if (zone == null || zone.trim().isEmpty || !RegExp(r'\d').hasMatch(seat.name)) return seat.name;
+    return '$zone · Desk ${deskLabel(seat.name)}';
+  }
+
+  /// "3:00 PM to 4:00 PM". A conflict alternative is booked at the server's own
+  /// window, so that window is what the bar shows.
+  String _slotRange(BookingFlowState flow) {
+    final window = flow.alternativeWindow;
+    if (window != null) return '${clockLabel(window.start)} to ${clockLabel(window.end)}';
+    final slot = flow.selectedSlot!;
+    return kSlotHours.containsKey(slot) ? '$slot to ${slotEndLabel(slot)}' : slot;
   }
 
   Widget _noneFree(ResourceType type, BookingFlowController notifier) {
@@ -168,7 +250,12 @@ class BookingFlowScreen extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => notifier.pickAlternative(alt),
             )),
-          TextButton(onPressed: notifier.backToPicker, child: const Text('Choose a different slot myself')),
+          // Back to the map at the same time, without the refused desk. Rooms keep
+          // their pick, as they always have.
+          TextButton(
+            onPressed: () => notifier.backToPicker(clearDesk: flow.type == ResourceType.seat),
+            child: const Text('Choose a different slot myself'),
+          ),
         ]),
       );
     }

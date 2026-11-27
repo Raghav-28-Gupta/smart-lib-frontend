@@ -14,6 +14,7 @@ class BookingFlowState {
     this.dateIndex = 0,
     this.selectedResource,
     this.selectedSlot,
+    this.selectedZone,
     this.step = BookingFlowStep.pick,
     this.result,
     this.conflictAlternatives,
@@ -24,6 +25,11 @@ class BookingFlowState {
   final int dateIndex;
   final Resource? selectedResource;
   final String? selectedSlot;
+
+  /// The zone the Seats tab shows, as the student chose it. It is only a choice:
+  /// the screen falls back to the first zone when this one no longer exists, so
+  /// it survives a change of day or time without a check here.
+  final String? selectedZone;
   final BookingFlowStep step;
   final ResourceBooking? result;
   final List<BookingAlternative>? conflictAlternatives;
@@ -37,7 +43,9 @@ class BookingFlowState {
     int? dateIndex,
     Resource? selectedResource,
     String? selectedSlot,
+    String? selectedZone,
     bool clearSelection = false,
+    bool clearResource = false,
     BookingFlowStep? step,
     ResourceBooking? result,
     bool clearResult = false,
@@ -49,12 +57,13 @@ class BookingFlowState {
       BookingFlowState(
         type: type,
         dateIndex: dateIndex ?? this.dateIndex,
-        selectedResource: clearSelection ? null : (selectedResource ?? this.selectedResource),
+        selectedResource: (clearSelection || clearResource) ? null : (selectedResource ?? this.selectedResource),
         selectedSlot: clearSelection ? null : (selectedSlot ?? this.selectedSlot),
+        selectedZone: selectedZone ?? this.selectedZone,
         step: step ?? this.step,
         result: clearResult ? null : (result ?? this.result),
         conflictAlternatives: clearAlternatives ? null : (conflictAlternatives ?? this.conflictAlternatives),
-        alternativeWindow: (clearAlternativeWindow || clearSelection) ? null : (alternativeWindow ?? this.alternativeWindow),
+        alternativeWindow: (clearAlternativeWindow || clearSelection || clearResource) ? null : (alternativeWindow ?? this.alternativeWindow),
       );
 }
 
@@ -71,7 +80,26 @@ class BookingFlowController extends Notifier<BookingFlowState> {
   void pickSlot(Resource r, String slot) =>
       state = state.copyWith(selectedResource: r, selectedSlot: slot, clearAlternativeWindow: true);
   void goToConfirm() => state = state.copyWith(step: BookingFlowStep.confirm);
-  void backToPicker() => state = state.copyWith(step: BookingFlowStep.pick, clearResult: true, clearAlternatives: true);
+
+  /// The Seats tab picks the time first. A desk chosen for another time may be
+  /// taken at this one, so the desk goes; so does a conflict alternative's
+  /// exact window, which belonged to that desk.
+  void chooseTime(String slot) =>
+      state = state.copyWith(selectedSlot: slot, clearResource: true, clearAlternativeWindow: true);
+
+  /// Moving between zones keeps the time and the desk: a desk picked in one
+  /// zone stays picked while the student looks at another.
+  void chooseZone(String zone) => state = state.copyWith(selectedZone: zone);
+
+  /// Back from the confirm step or the conflict screen. [clearDesk] is for
+  /// "Choose a different slot myself": the map reopens at the same time with
+  /// no desk, since the one that was refused is not the student's pick any more.
+  void backToPicker({bool clearDesk = false}) => state = state.copyWith(
+        step: BookingFlowStep.pick,
+        clearResult: true,
+        clearAlternatives: true,
+        clearResource: clearDesk,
+      );
 
   Future<void> confirm() async {
     final resource = state.selectedResource;
@@ -105,7 +133,10 @@ class BookingFlowController extends Notifier<BookingFlowState> {
 
 final bookingFlowControllerProvider = NotifierProvider<BookingFlowController, BookingFlowState>(BookingFlowController.new);
 
+// Only the type and the day decide what is loaded. Watching the whole flow
+// reloaded the seats on every tap of a time, zone or desk, which put a spinner
+// over the map and threw away its scroll position.
 final bookingResourcesProvider = FutureProvider.autoDispose<List<Resource>>((ref) {
-  final flow = ref.watch(bookingFlowControllerProvider);
-  return ref.watch(bookingRepositoryProvider).resources(flow.type, flow.dateIndex);
+  final (type, dateIndex) = ref.watch(bookingFlowControllerProvider.select((s) => (s.type, s.dateIndex)));
+  return ref.watch(bookingRepositoryProvider).resources(type, dateIndex);
 });

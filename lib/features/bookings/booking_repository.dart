@@ -6,14 +6,8 @@ import '../../core/api_exception.dart';
 import '../../core/time_format.dart';
 import '../../models/booking_alternative.dart';
 import '../../models/resource_booking.dart';
+import 'demo_seat_layout.dart';
 import 'time_slots.dart';
-
-const _seatSeed = [
-  Resource(id: 's1', name: 'Reading Room A · Desk 12', type: ResourceType.seat, takenSlotsToday: ['11:00 AM', '12:00 PM']),
-  Resource(id: 's2', name: 'Reading Room A · Desk 14', type: ResourceType.seat, takenSlotsToday: ['9:00 AM', '10:00 AM', '3:00 PM', '4:00 PM']),
-  Resource(id: 's3', name: 'Silent Zone · Desk 3', type: ResourceType.seat, takenSlotsToday: []),
-  Resource(id: 's4', name: 'Silent Zone · Desk 7', type: ResourceType.seat, takenSlotsToday: ['1:00 PM', '2:00 PM', '6:00 PM']),
-];
 
 const _roomSeed = [
   Resource(id: 'r1', name: 'Group Room 201 · 4 seats', type: ResourceType.room, takenSlotsToday: ['2:00 PM', '3:00 PM']),
@@ -63,8 +57,14 @@ class HttpBookingRepository implements BookingRepository {
 
   @override
   Future<List<Resource>> resources(ResourceType type, int dateIndex) async {
-    final res = await guardApi(() => _dio.get<List<dynamic>>('/resources/availability',
-        queryParameters: {'type': type.name, 'date': apiDate(dateIndex)}));
+    // Seats ask for the offline ones too, so the map can show a desk that is out of
+    // service. A server that predates the parameter ignores it and sends the
+    // available seats, as before.
+    final res = await guardApi(() => _dio.get<List<dynamic>>('/resources/availability', queryParameters: {
+          'type': type.name,
+          'date': apiDate(dateIndex),
+          if (type == ResourceType.seat) 'includeOffline': 'true',
+        }));
     return res.data!.map((j) => Resource.fromJson(j as Map<String, dynamic>)).toList();
   }
 
@@ -125,7 +125,8 @@ class HttpBookingRepository implements BookingRepository {
 /// Test double. Serves the two seeded bookings, or exactly [bookings] when a test gives
 /// its own (as [MockFineRepository] takes its fines). A no-show dispute is refused as
 /// the server refuses it and otherwise recorded in [noShowDisputes] and on the booking
-/// as an open dispute.
+/// as an open dispute. Its seats are the demo layout's 128 desks ([demoSeats]), the
+/// same as the backend seed.
 class MockBookingRepository implements BookingRepository {
   MockBookingRepository({List<ResourceBooking>? bookings}) {
     if (bookings != null) {
@@ -147,6 +148,7 @@ class MockBookingRepository implements BookingRepository {
 
   late List<ResourceBooking> _bookings;
   final Set<String> _extraTaken = {};
+  final List<Resource> _seatSeed = demoSeats();
 
   /// Every report that was accepted, in order.
   final reports = <({String resourceId, ResourceReportCategory category, String? note})>[];
@@ -175,7 +177,16 @@ class MockBookingRepository implements BookingRepository {
     return seed.map((r) {
       final seeded = dateIndex == 0 ? r.takenSlotsToday : const <String>[];
       final extra = kTimeSlots.where((s) => _extraTaken.contains(_key(r.id, dateIndex, s)));
-      return Resource(id: r.id, name: r.name, type: r.type, takenSlotsToday: [...seeded, ...extra]);
+      return Resource(
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          takenSlotsToday: [...seeded, ...extra],
+          location: r.location,
+          row: r.row,
+          column: r.column,
+          zoneFront: r.zoneFront,
+          status: r.status);
     }).toList();
   }
 

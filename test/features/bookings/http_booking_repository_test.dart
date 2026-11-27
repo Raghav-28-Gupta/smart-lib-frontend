@@ -30,6 +30,20 @@ void main() {
     expect(rooms.map((r) => r.id), containsAll(['r1', 'r2', 'r3']));
   });
 
+  test('the seats request sends includeOffline=true', () async {
+    final (bookings, stub) = repo((_) => StubResponse(200, fixture('resources_availability_seats')));
+    final seats = await bookings.resources(ResourceType.seat, 1);
+    expect(stub.requests.single.path, '/resources/availability');
+    expect(stub.requests.single.queryParameters, {'type': 'seat', 'date': apiDate(1), 'includeOffline': 'true'});
+    expect(seats, isNotEmpty);
+  });
+
+  test('the rooms request has no includeOffline', () async {
+    final (bookings, stub) = repo((_) => StubResponse(200, fixture('resources_availability_rooms')));
+    await bookings.resources(ResourceType.room, 0);
+    expect(stub.requests.single.queryParameters.containsKey('includeOffline'), false);
+  });
+
   test('createBooking sends the exact window as UTC, and returns the booking', () async {
     final (bookings, stub) = repo((_) => StubResponse(201, fixture('booking_created')));
     final start = DateTime(2026, 10, 11, 10);

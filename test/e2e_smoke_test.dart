@@ -51,8 +51,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('dateChip-1'))); // the scripted conflict is tomorrow
     await tester.pumpAndSettle();
-    await tester.tap(find.text('5:00 PM').first);
-    await tester.pumpAndSettle();
+    // Time first, then the desk: 5:00 PM, then Desk 12 (s1) on Reading Room A's map.
+    // Both may sit outside the view (the time strip and the page scroll), so bring
+    // each into view before tapping it.
+    for (final key in ['timeChip-5:00 PM', 'desk-s1']) {
+      await tester.ensureVisible(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key(key)));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Confirm booking'));
